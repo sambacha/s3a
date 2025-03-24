@@ -3,6 +3,29 @@ revision = 1
 requires-python = ">=3.11"
 
 [[package]]
-name = "z3smt"
-version = "0.1.0"
+name = "evmole"
+version = "0.7.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f1/2c/5b6d2806a7455a619b211e79d5b1f2fc464c693b26cc0146867ef40fa110/evmole-0.7.2.tar.gz", hash = "sha256:66a1fd2058390bf85f2bd968a39ff0e6c66b7daf70850370af967a51abc2c631", size = 79276 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fc/f6/17cbdd64e1795f37fa8523047fefe552843f050bba68da5d5e62903aca97/evmole-0.7.2-cp311-cp311-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:9794ae024a8f3a94d386e0dc57165ae7e4375ea161fe7ac5ff47c29f25ff71a3", size = 915834 },
+    { url = "https://files.pythonhosted.org/packages/a7/47/ea605b46f5e151b6279e0d82a381c3dc8bf85733264cc36e91923acb226e/evmole-0.7.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:50bad6ffb744b553f3f031db5972bc1a22d2c626ed8a04a9d4eb0b1127fd4f40", size = 502981 },
+    { url = "https://files.pythonhosted.org/packages/b9/41/bc2ad0cc2d9263366d6933d787a72331f880ec132806c605467350b49413/evmole-0.7.2-cp311-cp311-win_amd64.whl", hash = "sha256:6a55db8a2cb28a25df3db52a2b2bef679fef69067a25729bcb3b16863f713d7b", size = 372104 },
+    { url = "https://files.pythonhosted.org/packages/80/31/a3651ac1cbca97d12f4f2726ac71eacc3ab019d44b588e070bcfeb4f321f/evmole-0.7.2-cp312-cp312-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:298d635c7bfd763f69a53dae8b98ddb331e7c9284c83c8e5f41e000186c36ea7", size = 913203 },
+    { url = "https://files.pythonhosted.org/packages/ce/ac/a5a88fce288025f243c379b9d7633543ba1462c467270f9fa7b4a7c008c0/evmole-0.7.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:c6692bae88905c0cab85ecf72907fed90059a91ce58147ef596038b05c55a653", size = 503723 },
+    { url = "https://files.pythonhosted.org/packages/dd/c7/3364db0635e81fd1f0b51649521b2ce4470d6a975ed1cc752a3bea8904d1/evmole-0.7.2-cp312-cp312-win_amd64.whl", hash = "sha256:eed3d2dc78b6ac5fdd9474bea82c0015f4297ac981b8446ad25ce95d3b4d4604", size = 372784 },
+    { url = "https://files.pythonhosted.org/packages/d9/c3/bfc5ffd785bc27a5657da09e00dc85519d0c2517e2790a2427d3276a90b3/evmole-0.7.2-cp313-cp313-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:4ea6e989cdcdb70f78ab096d2b054b47e515cab23792cdf6095a6bf0e5f78313", size = 912124 },
+    { url = "https://files.pythonhosted.org/packages/72/31/50810743346ad85e9ec44ca7ea3dd1746298bbfe2b0ae4532befeec1dd21/evmole-0.7.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:13c1b01203483d802039dcdeb85900cb14cc59d4225085196fea4ad917a2744b", size = 503248 },
+    { url = "https://files.pythonhosted.org/packages/f1/8b/fed235bbff71ef330ed8c03225e1d758be25c72655b506f5772dd6b8f086/evmole-0.7.2-cp313-cp313-win_amd64.whl", hash = "sha256:f1d0ee8404f8c53a992c5d56e96e05f58cf4d2cdecd1b01a7b113ca8e40816fd", size = 372279 },
+]
+
+[[package]]
+name = "s3a"
+version = "0.0.1"
 source = { virtual = "." }
+dependencies = [
+    { name = "evmole" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "evmole", specifier = ">=0.7.2" }]

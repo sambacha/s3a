@@ -16,9 +16,12 @@ import sys
 from typing import Dict, List, Optional, Tuple, Any, Union
 from pathlib import Path
 from web3 import Web3
-from web3.types import ABI
+
+# Define ABI type locally since it's not exported from web3.types anymore
+ABI = List[Dict[str, Any]]
 
 from tracer.storage_analyzer import StorageAnalyzer
+from tracer.enhanced_storage_analyzer import EnhancedStorageAnalyzer
 from tracer.etherscan_client import EtherscanClient
 
 # Configure logging
@@ -39,7 +42,8 @@ DEFAULT_RPC_URLS = {
 DEFAULT_GAS_LIMIT = 2_000_000
 DEFAULT_OUTPUT_DIR = "build"
 DEFAULT_RESULTS_DIR = "results"
-DEFAULT_MAX_EXECUTION_PATHS = 200  # Increased from 100 to improve coverage
+DEFAULT_MAX_EXECUTION_PATHS = 200  # Default path limit
+DEFAULT_TIME_LIMIT = 60  # Default 60 second timeout
 
 # Anvil default private key (for development only)
 ANVIL_DEFAULT_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
@@ -379,41 +383,63 @@ def deploy_contract(
 
 def analyze_bytecode(
     bytecode: str,
-    max_execution_paths: int = DEFAULT_MAX_EXECUTION_PATHS
-) -> Tuple[str, Dict[str, Any]]:
+    max_execution_paths: int = DEFAULT_MAX_EXECUTION_PATHS,
+    time_limit: int = DEFAULT_TIME_LIMIT,
+    use_enhanced: bool = False
+) -> Tuple[str, Dict[str, Any], Optional[Dict[str, Any]]]:
     """
     Analyze contract bytecode to detect storage layout.
     
     Args:
         bytecode: Contract bytecode
         max_execution_paths: Maximum number of execution paths to explore
+        time_limit: Time limit for analysis in seconds
+        use_enhanced: Whether to use the enhanced analyzer with evmole
         
     Returns:
-        Tuple of (string representation, dictionary representation)
+        Tuple of (string representation, dictionary representation, optional stats)
         
     Raises:
         ValueError: If analysis fails
     """
     logger.info(f"Analyzing bytecode of size: {len(bytecode) // 2} bytes")
     
-    # Create storage analyzer with appropriate settings
-    analyzer = StorageAnalyzer(max_execution_paths=max_execution_paths)
+    # Choose analyzer based on configuration
+    if use_enhanced:
+        logger.info("Using enhanced analyzer with evmole integration")
+        analyzer = EnhancedStorageAnalyzer(
+            max_execution_paths=max_execution_paths,
+            time_limit=time_limit
+        )
+    else:
+        logger.info("Using standard analyzer")
+        analyzer = StorageAnalyzer(max_execution_paths=max_execution_paths)
     
     # Analyze bytecode
     layout = analyzer.analyze(bytecode)
+    
+    # Get stats if available (only for enhanced analyzer)
+    stats = None
+    if use_enhanced:
+        stats = analyzer.get_analysis_stats()
+        logger.info(f"Analysis completed in {stats.get('analysis_time', 0):.2f} seconds")
+        logger.info(f"Explored {stats.get('execution_paths', 0)} execution paths")
+        logger.info(f"Found {stats.get('storage_variables', 0)} storage variables")
     
     # Return both string and dictionary representations
     layout_str = str(layout)
     layout_dict = layout.to_dict()
     
-    return layout_str, layout_dict
+    return layout_str, layout_dict, stats
 
 
 def analyze_contract(
     web3: Web3, 
     contract_address: str,
-    max_execution_paths: int = DEFAULT_MAX_EXECUTION_PATHS
-) -> Tuple[str, Dict[str, Any]]:
+    max_execution_paths: int = DEFAULT_MAX_EXECUTION_PATHS,
+    time_limit: int = DEFAULT_TIME_LIMIT,
+    use_enhanced: bool = False
+) -> Tuple[str, Dict[str, Any], Optional[Dict[str, Any]]]:
     """
     Analyze a deployed contract's storage layout.
     
@@ -421,9 +447,11 @@ def analyze_contract(
         web3: Web3 instance
         contract_address: Contract address
         max_execution_paths: Maximum number of execution paths to explore
+        time_limit: Time limit for analysis in seconds
+        use_enhanced: Whether to use the enhanced analyzer with evmole
         
     Returns:
-        Tuple of (string representation, dictionary representation)
+        Tuple of (string representation, dictionary representation, optional stats)
         
     Raises:
         ValueError: If analysis fails
@@ -437,7 +465,7 @@ def analyze_contract(
             raise ValueError(f"No bytecode found at address {contract_address}")
         
         # Use the bytecode analyzer
-        return analyze_bytecode(bytecode, max_execution_paths)
+        return analyze_bytecode(bytecode, max_execution_paths, time_limit, use_enhanced)
         
     except Exception as e:
         logger.error(f"Analysis failed: {str(e)}")
@@ -447,7 +475,8 @@ def analyze_contract(
 def save_results(
     layout_dict: Dict[str, Any],
     contract_address: str,
-    output_dir: str = DEFAULT_RESULTS_DIR
+    output_dir: str = DEFAULT_RESULTS_DIR,
+    stats: Optional[Dict[str, Any]] = None
 ) -> str:
     """
     Save analysis results to a JSON file.
@@ -456,6 +485,7 @@ def save_results(
         layout_dict: Dictionary representation of the layout
         contract_address: Contract address
         output_dir: Directory to save results
+        stats: Optional analysis statistics
         
     Returns:
         Path to the saved file
@@ -472,8 +502,16 @@ def save_results(
     
     # Save to file
     try:
+        # Create complete result object with stats if available
+        result = {
+            "storage_layout": layout_dict
+        }
+        
+        if stats:
+            result["stats"] = stats
+        
         with open(filename, 'w') as f:
-            json.dump(layout_dict, f, indent=2)
+            json.dump(result, f, indent=2)
         
         logger.info(f"Results saved to {filename}")
         return filename
@@ -570,9 +608,22 @@ def main() -> int:
     )
     
     parser.add_argument(
+        "--time-limit",
+        type=int,
+        help="Time limit for analysis in seconds",
+        default=DEFAULT_TIME_LIMIT
+    )
+    
+    parser.add_argument(
         "--output-dir",
         help="Directory to save results",
         default=DEFAULT_RESULTS_DIR
+    )
+    
+    parser.add_argument(
+        "--enhanced",
+        action="store_true",
+        help="Use enhanced analyzer with evmole integration"
     )
     
     parser.add_argument(
@@ -613,17 +664,29 @@ def main() -> int:
             if not bytecode.startswith("0x"):
                 bytecode = "0x" + bytecode
                 
-            layout_str, layout_dict = analyze_bytecode(
+            layout_str, layout_dict, stats = analyze_bytecode(
                 bytecode,
-                max_execution_paths=args.max_paths
+                max_execution_paths=args.max_paths,
+                time_limit=args.time_limit,
+                use_enhanced=args.enhanced
             )
             
             # Save and display results
-            save_results(layout_dict, "raw_bytecode", args.output_dir)
+            save_results(layout_dict, "raw_bytecode", args.output_dir, stats)
             
             print("\nStorage Layout Analysis Result:")
             print("===============================")
             print(layout_str)
+            
+            # Print stats if available
+            if stats:
+                print("\nAnalysis Statistics:")
+                print("===================")
+                print(f"Execution time: {stats.get('analysis_time', 0):.2f} seconds")
+                print(f"Execution paths explored: {stats.get('execution_paths', 0)}")
+                print(f"Storage variables found: {stats.get('storage_variables', 0)}")
+                if 'enhancements' in stats:
+                    print(f"Type inference enhancements: {stats.get('enhancements', 0)}")
             
             return 0
         
@@ -632,17 +695,29 @@ def main() -> int:
             bytecode, abi = get_contract_from_etherscan(args.address, args.etherscan_key, args.network)
             
             # Analyze bytecode directly
-            layout_str, layout_dict = analyze_bytecode(
+            layout_str, layout_dict, stats = analyze_bytecode(
                 bytecode,
-                max_execution_paths=args.max_paths
+                max_execution_paths=args.max_paths,
+                time_limit=args.time_limit,
+                use_enhanced=args.enhanced
             )
             
             # Save and display results
-            save_results(layout_dict, args.address, args.output_dir)
+            save_results(layout_dict, args.address, args.output_dir, stats)
             
             print("\nStorage Layout Analysis Result:")
             print("===============================")
             print(layout_str)
+            
+            # Print stats if available
+            if stats:
+                print("\nAnalysis Statistics:")
+                print("===================")
+                print(f"Execution time: {stats.get('analysis_time', 0):.2f} seconds")
+                print(f"Execution paths explored: {stats.get('execution_paths', 0)}")
+                print(f"Storage variables found: {stats.get('storage_variables', 0)}")
+                if 'enhancements' in stats:
+                    print(f"Type inference enhancements: {stats.get('enhancements', 0)}")
             
             return 0
         
@@ -679,19 +754,31 @@ def main() -> int:
             )
         
         # Analyze contract
-        layout_str, layout_dict = analyze_contract(
+        layout_str, layout_dict, stats = analyze_contract(
             web3, 
             contract_address,
-            max_execution_paths=args.max_paths
+            max_execution_paths=args.max_paths,
+            time_limit=args.time_limit,
+            use_enhanced=args.enhanced
         )
         
         # Save results
-        save_results(layout_dict, contract_address, args.output_dir)
+        save_results(layout_dict, contract_address, args.output_dir, stats)
         
         # Print results
         print("\nStorage Layout Analysis Result:")
         print("===============================")
         print(layout_str)
+        
+        # Print stats if available
+        if stats:
+            print("\nAnalysis Statistics:")
+            print("===================")
+            print(f"Execution time: {stats.get('analysis_time', 0):.2f} seconds")
+            print(f"Execution paths explored: {stats.get('execution_paths', 0)}")
+            print(f"Storage variables found: {stats.get('storage_variables', 0)}")
+            if 'enhancements' in stats:
+                print(f"Type inference enhancements: {stats.get('enhancements', 0)}")
         
         return 0  # Success
         

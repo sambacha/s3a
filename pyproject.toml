@@ -4,7 +4,9 @@ version = "0.0.1"
 description = "SMT-based Symbolic Storage Analysis for the EVM"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "evmole>=0.7.2",
+]
 
 [tool.poetry]
 name = "s3a"
@@ -19,8 +21,4 @@ python = "^3.11"
 z3-solver = "^4.14.1.0"
 eth-utils = "^5.2.0"
 web3 = "^7.9.0"
-
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+evmole = "^0.1.0"  # EVM bytecode decompiler for enhanced analysis

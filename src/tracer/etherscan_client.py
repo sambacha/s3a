@@ -57,7 +57,7 @@ class EtherscanClient:
         
         Returns:
             Tuple containing (ABI, is_verified)
-        export ETHERSCAN_API_KEY=6VP5QTRB29Y2A31FDUK4GCMD31B1M51FQC
+        export ETHERSCAN_API_KEY=
 
         """
         params = {

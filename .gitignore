@@ -13,3 +13,5 @@ wheels/
 out/
 results/
 
+.hypothesis
+.pytest_cache/

@@ -13,16 +13,17 @@ import subprocess
 import time
 import logging
 import sys
-from typing import Dict, List, Optional, Tuple, Any, Union
+from typing import Dict, List, Optional, Tuple, Any, Union, Set
 from pathlib import Path
 from web3 import Web3
+from collections import defaultdict # Added for access list generation
 
 # Define ABI type locally since it's not exported from web3.types anymore
 ABI = List[Dict[str, Any]]
 
-from tracer.storage_analyzer import StorageAnalyzer
-from tracer.enhanced_storage_analyzer import EnhancedStorageAnalyzer
-from tracer.etherscan_client import EtherscanClient
+from .tracer.storage_analyzer import StorageAnalyzer # Changed to relative import
+from .tracer.enhanced_storage_analyzer import EnhancedStorageAnalyzer # Changed to relative import
+from .tracer.etherscan_client import EtherscanClient
 
 # Configure logging
 logging.basicConfig(
@@ -316,10 +317,10 @@ def connect_to_ethereum(rpc_url: str, retries: int = 3, retry_delay: int = 2) ->
 
 
 def deploy_contract(
-    web3: Web3, 
-    abi: ABI, 
-    bytecode: str, 
-    constructor_args: List[Any] = None,
+    web3: Web3,
+    abi: ABI,
+    bytecode: str,
+    constructor_args: List[Any] = [],
     gas_limit: int = DEFAULT_GAS_LIMIT
 ) -> str:
     """
@@ -654,6 +655,10 @@ def main() -> int:
     if args.network != "local" and args.address and not args.etherscan_key:
         parser.error("--etherscan-key is required when analyzing contracts on public networks")
     
+    # Check RPC URL requirement for access list generation
+    if args.generate_access_list and not (args.rpc_url or DEFAULT_RPC_URLS.get(args.network)):
+         parser.error("--rpc-url or a default --network RPC must be available for access list generation")
+    
     anvil_process = None
     
     try:
@@ -690,8 +695,23 @@ def main() -> int:
             
             return 0
         
-        # Handle Etherscan integration for public networks
-        if args.address and args.network != "local" and args.etherscan_key:
+        # Determine RPC URL early if needed for access list or deployment/analysis
+        rpc_url = args.rpc_url or DEFAULT_RPC_URLS.get(args.network)
+        if not rpc_url:
+             # This case should be caught by the earlier check if --generate-access-list is used
+             parser.error("RPC URL could not be determined. Use --rpc-url or specify a --network with a default.")
+
+        # --- Handle Access List Generation ---
+        if args.generate_access_list:
+            logger.info(f"Generating access list for transaction: {args.generate_access_list}")
+            web3_conn = connect_to_ethereum(rpc_url)
+            access_list = generate_access_list(web3_conn, args.generate_access_list)
+            print(json.dumps(access_list, indent=2))
+            return 0
+        # --- End Access List Generation ---
+
+        # Handle Etherscan integration for public networks (for analysis, not access list)
+        elif args.address and args.network != "local" and args.etherscan_key:
             bytecode, abi = get_contract_from_etherscan(args.address, args.etherscan_key, args.network)
             
             # Analyze bytecode directly
@@ -724,11 +744,8 @@ def main() -> int:
         # Start Anvil if requested for local testing
         if args.anvil:
             anvil_process = start_anvil(args.anvil_port)
-        
-        # Determine RPC URL
-        rpc_url = args.rpc_url or DEFAULT_RPC_URLS.get(args.network)
-        
-        # Connect to Ethereum node
+
+        # Connect to Ethereum node (already determined rpc_url)
         web3 = connect_to_ethereum(rpc_url)
         
         # Get contract address
@@ -802,5 +819,81 @@ def main() -> int:
                 anvil_process.wait()
 
 
-if __name__ == "__main__":
-    sys.exit(main())
+# --- Access List Generation Logic ---
+
+def generate_access_list(web3: Web3, tx_hash: str) -> List[Dict[str, Any]]:
+    """
+    Generates an EIP-2930 access list for a given transaction hash.
+
+    Args:
+        web3: Connected Web3 instance.
+        tx_hash: The transaction hash as a hex string.
+
+    Returns:
+        A list formatted according to EIP-2930.
+
+    Raises:
+        ValueError: If the trace cannot be retrieved or parsed.
+        Exception: For other web3 or processing errors.
+    """
+    logger.info(f"Fetching trace for transaction {tx_hash}...")
+    try:
+        # Use default tracer which includes structLogs with storage
+        trace = web3.provider.make_request("debug_traceTransaction", [tx_hash])
+        if "result" not in trace:
+             raise ValueError(f"Failed to get trace for {tx_hash}. Response: {trace.get('error', 'Unknown error')}")
+        struct_logs = trace["result"].get("structLogs")
+        if not struct_logs:
+            raise ValueError(f"No structLogs found in trace for {tx_hash}")
+
+    except Exception as e:
+        logger.error(f"Error fetching or parsing trace: {e}")
+        return [] # Return empty list on error
+
+    logger.info(f"Processing {len(struct_logs)} trace steps...")
+    access_list_data: Dict[str, Set[str]] = defaultdict(set) # address -> set(keys)
+
+    # Pre-populate with sender and receiver
+    sender: Optional[str] = None # Initialize to None
+    receiver: Optional[str] = None # Initialize to None
+    try:
+        tx_data = web3.eth.get_transaction(tx_hash)
+        sender = tx_data.get('from')
+        receiver = tx_data.get('to')
+        if sender:
+            access_list_data[web3.to_checksum_address(sender)] # Ensure sender is present
+        if receiver:
+            access_list_data[web3.to_checksum_address(receiver)] # Ensure receiver is present
+    except Exception as e:
+        logger.warning(f"Could not get transaction details to pre-populate sender/receiver: {e}")
+
+
+    call_stack = [] # To keep track of current contract context
+
+    for i, log in enumerate(struct_logs):
+        # Track call stack depth to determine current address context
+        depth = log.get("depth")
+        op = log.get("op")
+
+        # Update call stack (simplified)
+        # A more robust method would parse CALL/CREATE inputs fully
+        if len(call_stack) < depth:
+             # Inferring called address is complex from default trace, might need callTracer
+             # For now, we rely on SLOAD/SSTORE context if available
+             # Or addresses accessed via stack for CALL/STATICCALL etc.
+             pass # Placeholder
+        elif len(call_stack) > depth:
+             call_stack = call_stack[:depth] # Returned from call
+
+        # Get current address (best effort)
+        # This is the hardest part without a dedicated call tracer.
+        # We assume the address context is implicitly the contract being executed.
+        # For SLOAD/SSTORE, the address is the one whose storage is modified.
+        # For CALLs, the target address is on the stack.
+        current_address = None
+        stack = log.get("stack", [])
+        if not stack: continue
+
+        try:
+            if op in ("SLOAD", "SSTORE"):
+                # SLOAD key is stack[-1],

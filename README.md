@@ -1,5 +1,10 @@
 # SMT EVM Storage Layout Analyzer
 
+
+> [!WARNING]
+> A.I. Generated Code, there be dragons
+>
+
 A symbolic execution-based tool for automatically detecting storage layouts in Ethereum smart contracts.
 
 This tool uses Z3 SMT solver to analyze EVM bytecode and identify storage variables, their types, and patterns. It also incorporates the evmole decompiler for improved accuracy and to assist z3 in storage analysis.

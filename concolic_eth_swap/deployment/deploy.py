@@ -1,13 +1,15 @@
-# deployment/deploy.py
-# deployment/deploy.py
+
 import argparse
 import os
 import logging
 import structlog
+from structlog import configure
 from structlog.stdlib import LoggerFactory
 import multiprocessing
 import sys
 from typing import List # Import List
+
+configure(logger_factory=LoggerFactory())
 
 # Ensure the package root is in the Python path if running as a script
 # This might be needed if running `python deployment/deploy.py` directly

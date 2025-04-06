@@ -6,9 +6,11 @@ from typing import Dict, List, Any, Tuple, Optional
 import structlog
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
-# Import evmole's decoder
-from evmole import decode_function_input
+# Import necessary abi and utils functions
+from eth_abi import decode as abi_decode
+from eth_abi.grammar import parse as parse_abi_signature
 from eth_utils import function_signature_to_4byte_selector, is_hex, to_checksum_address, to_bytes
+import re # For parsing signature types
 
 # Use relative imports within the package
 from ..core.concolic import ConcolicExecutor
@@ -228,8 +230,8 @@ class SwapAnalyzer:
 
     def _extract_swap_path(self, tx: Dict, method_info: SwapMethodSignature) -> Optional[List[str]]:
         """
-        Placeholder for extracting the token swap path from input data using ABI.
-        Uses evmole to decode input data based on the method signature.
+        Extracts the token swap path from input data using eth_abi.
+        Handles standard address arrays and Uniswap V3 packed byte paths.
         """
         input_data_hex = tx.get("input", "0x")
         if not input_data_hex or len(input_data_hex) < 10:
@@ -243,67 +245,112 @@ class SwapAnalyzer:
         input_data_bytes = to_bytes(hexstr=input_data_hex[10:]) # Get data part as bytes
 
         try:
-            decoded_inputs = decode_function_input(method_info.signature, input_data_bytes)
-            logger.debug("Decoded input data", method=method_info.name, decoded=decoded_inputs)
+            # Extract types from the signature string, e.g., "swap(uint256,address[])" -> ['uint256', 'address[]']
+            match = re.match(r'^[a-zA-Z0-9_]+\((.*)\)$', method_info.signature)
+            if not match:
+                raise ValueError(f"Could not parse types from signature: {method_info.signature}")
+            types_string = match.group(1)
+            # Use eth_abi's grammar parser to handle complex types like tuples
+            parsed_types = [str(t) for t in parse_abi_signature(f'({types_string})')] # Wrap in tuple for parser
 
-            # --- Handle different path representations ---
+            decoded_inputs = abi_decode(parsed_types, input_data_bytes)
+            logger.debug("Decoded input data with eth-abi", method=method_info.name, types=parsed_types, decoded_count=len(decoded_inputs))
 
-            # Case 1: Path is an explicit parameter (e.g., address[] path in Uniswap V2)
-            if method_info.path_param_name and method_info.path_param_name in decoded_inputs:
-                path_data = decoded_inputs[method_info.path_param_name]
-                if isinstance(path_data, (list, tuple)):
-                    # Ensure all elements are valid addresses
-                    path_addresses = [to_checksum_address(addr) for addr in path_data if is_hex(addr)]
-                    if len(path_addresses) == len(path_data): # Check if all were valid addresses
-                        return path_addresses
+            # --- Find the path parameter ---
+            # We need to know the *index* or *name* of the path parameter.
+            # Let's assume path_param_name in patterns.py tells us the name.
+            # If not, we might need to infer based on type 'address[]' or 'bytes'.
+
+            path_data = None
+            if method_info.path_param_name:
+                # If param names were part of the signature parsing (not standard ABI string),
+                # we could potentially get them by name. But eth_abi.decode returns a tuple.
+                # We need to find the index corresponding to the name.
+                # This requires parsing the signature *with names*.
+                # Simplified approach: Find the first argument of type address[] or bytes.
+                path_index = -1
+                param_names = [] # Placeholder if we could get names
+                try:
+                    # Attempt to parse names (this is non-standard for simple signatures)
+                    # A full ABI JSON would be better here.
+                    sig_parts = re.match(r'^[a-zA-Z0-9_]+\((.*)\)$', method_info.signature)
+                    if sig_parts:
+                        params_str = sig_parts.group(1)
+                        # Very basic split, doesn't handle nested tuples well
+                        param_defs = [p.strip() for p in params_str.split(',')]
+                        param_names = [p.split()[-1] for p in param_defs if len(p.split()) > 1]
+
+                    if method_info.path_param_name in param_names:
+                         path_index = param_names.index(method_info.path_param_name)
                     else:
-                        logger.warning("Invalid address found in decoded path array", path_data=path_data)
-                        return None
-                # Case 1b: Path is bytes (Uniswap V3 exactInput) - needs specific decoding
-                elif isinstance(path_data, bytes):
-                    # Uniswap V3 path encoding: address (20 bytes) | fee (3 bytes) | address (20 bytes) ...
-                    decoded_v3_path = []
-                    i = 0
-                    while i < len(path_data):
-                        if i + 20 > len(path_data): break # Avoid reading past end
-                        addr_bytes = path_data[i:i+20]
-                        decoded_v3_path.append(to_checksum_address(addr_bytes))
-                        i += 20
-                        if i + 3 <= len(path_data): # Check if there's a fee and potentially another address
-                            # fee = int.from_bytes(path_data[i:i+3], 'big') # We don't need the fee here
-                            i += 3
-                        else:
-                            break # Path ends after an address
-                    return decoded_v3_path if decoded_v3_path else None
+                        # Fallback: find by type
+                        for i, p_type in enumerate(parsed_types):
+                            if p_type == 'address[]' or p_type == 'bytes':
+                                path_index = i
+                                break
+                except Exception as parse_err:
+                     logger.warning("Could not reliably determine path parameter index", method=method_info.name, error=parse_err)
+                     # Fallback to searching by type if name/index logic fails
+                     path_index = -1
+                     for i, p_type in enumerate(parsed_types):
+                         if p_type == 'address[]' or p_type == 'bytes':
+                             path_index = i
+                             break
 
-            # Case 2: Path is implicit in struct parameters (e.g., Uniswap V3 exactInputSingle)
+                if path_index != -1 and path_index < len(decoded_inputs):
+                    path_data = decoded_inputs[path_index]
+                else:
+                    logger.warning("Path parameter not found by name or type", method=method_info.name, path_param_name=method_info.path_param_name, types=parsed_types)
+                    return None
+
+            # Case 2 (Implicit path in V3 Single Hop): Handled separately as path_param_name is None
             elif method_info.dex_type == "UNISWAP_V3" and method_info.name in ["exactInputSingle", "exactOutputSingle"]:
-                 # The input is decoded as a single tuple representing the struct
                  if isinstance(decoded_inputs, tuple) and len(decoded_inputs) == 1 and isinstance(decoded_inputs[0], tuple):
                      params_struct = decoded_inputs[0]
-                     # Infer path from tokenIn and tokenOut (assuming standard struct order)
-                     # Example struct: (tokenIn, tokenOut, fee, recipient, deadline, amountIn, amountOutMinimum, sqrtPriceLimitX96)
-                     # Indices might vary slightly based on exact signature used in patterns.py
                      try:
+                         # Indices assume standard V3 struct order: (tokenIn, tokenOut, ...)
                          token_in = to_checksum_address(params_struct[0])
                          token_out = to_checksum_address(params_struct[1])
+                         logger.debug("Extracted implicit path from V3 single swap", method=method_info.name, path=[token_in, token_out])
                          return [token_in, token_out]
-                     except (IndexError, ValueError) as struct_err:
+                     except (IndexError, ValueError, TypeError) as struct_err:
                          logger.error("Error extracting tokens from V3 single struct", method=method_info.name, struct_data=params_struct, error=struct_err)
                          return None
                  else:
                      logger.warning("Unexpected decoded structure for V3 single swap", method=method_info.name, decoded=decoded_inputs)
                      return None
 
-            # --- Add more cases as needed ---
+            # --- Process the extracted path_data ---
+            if path_data is None:
+                 logger.warning("Path data could not be extracted", method=method_info.name)
+                 return None
 
+            if isinstance(path_data, (list, tuple)): # Standard address[] path
+                path_addresses = [to_checksum_address(addr) for addr in path_data if isinstance(addr, str) and is_hex(addr)]
+                if len(path_addresses) == len(path_data):
+                    logger.debug("Extracted address[] path", method=method_info.name, path=path_addresses)
+                    return path_addresses
+                else:
+                    logger.warning("Invalid address found in decoded path array", path_data=path_data)
+                    return None
+            elif isinstance(path_data, bytes): # Uniswap V3 packed bytes path
+                decoded_v3_path = []
+                i = 0
+                while i < len(path_data):
+                    if i + 20 > len(path_data): break
+                    addr_bytes = path_data[i:i+20]
+                    decoded_v3_path.append(to_checksum_address(addr_bytes))
+                    i += 20
+                    if i + 3 <= len(path_data): # Skip fee
+                        i += 3
+                    else:
+                        break # Path ends after an address
+                logger.debug("Extracted V3 bytes path", method=method_info.name, path=decoded_v3_path)
+                return decoded_v3_path if decoded_v3_path else None
             else:
-                logger.warning("Path parameter name not specified or not found in decoded inputs", method=method_info.name, path_param=method_info.path_param_name, decoded_keys=list(decoded_inputs.keys()) if isinstance(decoded_inputs, dict) else None)
-                return None
+                 logger.warning("Extracted path data has unexpected type", method=method_info.name, type=type(path_data))
+                 return None
 
         except Exception as e:
-            # Catch potential errors from decode_function_input or subsequent processing
-            logger.error("Error decoding input or extracting path", method=method_info.name, signature=method_info.signature, error=str(e))
+            logger.exception("Error decoding input or extracting path with eth-abi", method=method_info.name, signature=method_info.signature, error=str(e))
             return None
-
-        return None # Default if no path found

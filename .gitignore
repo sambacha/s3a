@@ -12,6 +12,13 @@ wheels/
 .DS_Store
 out/
 results/
-
+*.sh
+broadcast/
+*.txt
+out/
 .hypothesis
 .pytest_cache/
+
+cache/
+.cache/
+tmp/

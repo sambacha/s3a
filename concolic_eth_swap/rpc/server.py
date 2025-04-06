@@ -2,7 +2,7 @@
 import json
 from typing import Dict, Any, List, Optional
 import structlog
-from jsonrpcserver import method, serve, Success, Error, Result, Methods, dispatch
+from jsonrpcserver import method, serve, Success, Error, Result, dispatch
 
 # Use relative imports for components within the package
 from ..swap_detection.analyzer import SwapAnalyzer

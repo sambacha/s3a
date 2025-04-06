@@ -1,3 +1,16 @@
-web3==6.0.0
-z3-solver==4.12.2
-eth-utils==2.1.0
+# Base requirements (managed by uv via pyproject.toml and uv.lock)
+z3-solver>=4.8.10
+web3>=5.23.0
+pyevmasm>=0.2.3
+eth-utils>=1.10.0
+eth-abi>=2.1.1
+py-evm>=0.5.0
+networkx>=2.5
+dataclasses-json>=0.5.6
+structlog>=21.1.0
+jsonrpcserver
+redis
+evmole
+
+# Development requirements (managed by uv via pyproject.toml and uv.lock)
+pytest>=6.2.5

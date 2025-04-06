@@ -1,0 +1,11 @@
+{
+  "type": "CALL",
+  "from": "0xANOTHER_SENDER",
+  "to": "0xRECEIVER_ADDRESS",
+  "value": "0xb1a2bc2ec50000",
+  "gas": "0x5208",
+  "gasUsed": "0x5208",
+  "input": "0x",
+  "output": "0x",
+  "calls": []
+}

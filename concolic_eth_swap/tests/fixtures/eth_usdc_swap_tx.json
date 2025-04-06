@@ -1,0 +1,18 @@
+{
+  "blockHash": "0x...",
+  "blockNumber": 12345678,
+  "from": "0xSENDER_ADDRESS",
+  "gas": 500000,
+  "gasPrice": 50000000000,
+  "hash": "0xSWAP_HASH",
+  "input": "0x7ff36ab5...",
+  "nonce": 10,
+  "to": "0x7a250d5630b4cf539739df2c5dacb4c659f2488d",
+  "transactionIndex": 5,
+  "value": 1000000000000000000,
+  "type": 2,
+  "chainId": 1,
+  "v": 1,
+  "r": "0x...",
+  "s": "0x..."
+}

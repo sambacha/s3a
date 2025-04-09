@@ -30,7 +30,7 @@ OPCODE_STACK_EFFECTS = {
     "SHR": (2, 1),
     "SAR": (2, 1),
     # 20s: Keccak256
-    "KECCAK256": (2, 1), # Previously SHA3
+    "KECCAK256": (2, 1),  # Previously SHA3
     # 30s: Environmental Information
     "ADDRESS": (0, 1),
     "BALANCE": (1, 1),
@@ -53,11 +53,14 @@ OPCODE_STACK_EFFECTS = {
     "COINBASE": (0, 1),
     "TIMESTAMP": (0, 1),
     "NUMBER": (0, 1),
-    "DIFFICULTY": (0, 1), # PREVRANDAO post-merge
+    "DIFFICULTY": (0, 1),  # PREVRANDAO post-merge
     "GASLIMIT": (0, 1),
     "CHAINID": (0, 1),
-    "SELFBALANCE": (0, 1), # SELFBALANCE takes 0 args since EIP-1884, but older docs might say 1
-    "BASEFEE": (0, 1), # EIP-3198
+    "SELFBALANCE": (
+        0,
+        1,
+    ),  # SELFBALANCE takes 0 args since EIP-1884, but older docs might say 1
+    "BASEFEE": (0, 1),  # EIP-3198
     # 50s: Stack, Memory, Storage and Flow Operations
     "POP": (1, 0),
     "MLOAD": (1, 1),
@@ -92,9 +95,10 @@ OPCODE_STACK_EFFECTS = {
     "CREATE2": (4, 1),
     "STATICCALL": (6, 1),
     "REVERT": (2, 0),
-    "INVALID": (0, 0), # Defined as 0xff
+    "INVALID": (0, 0),  # Defined as 0xff
     "SELFDESTRUCT": (1, 0),
 }
+
 
 def analyze_stack_locally(block):
     """
@@ -102,10 +106,10 @@ def analyze_stack_locally(block):
     Tracks which values are pushed onto the stack and
     which operations consume stack values. Uses explicit pops/pushes per opcode.
     """
-    stack_height = 0 # Simulate height change, not actual values
+    stack_height = 0  # Simulate height change, not actual values
     total_pushes = 0
     total_pops = 0
-    min_height = 0 # Track minimum height to estimate input stack height needed
+    min_height = 0  # Track minimum height to estimate input stack height needed
 
     # Assume block.stack_height_in is unknown initially
     # We calculate the effect relative to the start of the block
@@ -120,12 +124,14 @@ def analyze_stack_locally(block):
             # DUPn pops 0, pushes 1. Needs n items on stack.
             dup_n = int(opcode[3:])
             pops, pushes = 0, 1
-            if stack_height < dup_n: min_height = min(min_height, stack_height - dup_n)
+            if stack_height < dup_n:
+                min_height = min(min_height, stack_height - dup_n)
         elif opcode.startswith("SWAP"):
             # SWAPn pops 0, pushes 0. Needs n+1 items on stack.
             swap_n = int(opcode[4:])
             pops, pushes = 0, 0
-            if stack_height < swap_n + 1: min_height = min(min_height, stack_height - (swap_n + 1))
+            if stack_height < swap_n + 1:
+                min_height = min(min_height, stack_height - (swap_n + 1))
         elif opcode in OPCODE_STACK_EFFECTS:
             pops, pushes = OPCODE_STACK_EFFECTS[opcode]
         else:

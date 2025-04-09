@@ -8,7 +8,7 @@ OPCODES = {
     0x01: "ADD",
     0x02: "MUL",
     # ... add other opcodes
-    0x5b: "JUMPDEST",
+    0x5B: "JUMPDEST",
     0x60: "PUSH1",
     # ...
 }
@@ -20,6 +20,7 @@ GAS_COSTS = {
     "MUL": 5,
     # ...
 }
+
 
 def get_opcode_info(opcode_val: int) -> str:
     return OPCODES.get(opcode_val, f"UNKNOWN_OPCODE_{hex(opcode_val)}")

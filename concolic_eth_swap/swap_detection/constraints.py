@@ -10,6 +10,7 @@ logger = structlog.get_logger()
 # swap detection, beyond the basic balance checks in concolic.py.
 # For example, checking AMM invariants (k = x * y), slippage constraints, etc.
 
+
 def check_uniswap_v2_invariant(
     state: SymbolicEVMState,
     solver_context: Z3SolverContext,
@@ -19,7 +20,7 @@ def check_uniswap_v2_invariant(
     reserve1_before: SymbolicValue,
     reserve0_after: SymbolicValue,
     reserve1_after: SymbolicValue,
-    fee: int = 30 # Basis points (e.g., 30 for 0.3%)
+    fee: int = 30,  # Basis points (e.g., 30 for 0.3%)
 ) -> Optional[bool]:
     """
     Checks if the Uniswap V2 k = x * y invariant holds (approximately, considering fees).
@@ -56,28 +57,35 @@ def check_uniswap_v2_invariant(
             return True
         else:
             # Check if the invariant CAN be violated (potentially false)
-            solver.pop() # Remove the Not(invariant) constraint
+            solver.pop()  # Remove the Not(invariant) constraint
             solver.push()
-            solver.add(z3.Not(invariant_holds)) # Add back the negation
+            solver.add(z3.Not(invariant_holds))  # Add back the negation
             if solver.check() == z3.sat:
-                 logger.warning("Uniswap V2 invariant potentially violated", pool=pool_address)
-                 solver.pop()
-                 return False
+                logger.warning(
+                    "Uniswap V2 invariant potentially violated", pool=pool_address
+                )
+                solver.pop()
+                return False
             else:
-                 # Invariant holds, but couldn't prove it (might be due to symbolic complexity)
-                 # or the path itself is unsat (which should have been caught earlier)
-                 logger.debug("Uniswap V2 invariant holds (satisfiable)", pool=pool_address)
-                 solver.pop()
-                 return True # Treat as holding if not proven violated
+                # Invariant holds, but couldn't prove it (might be due to symbolic complexity)
+                # or the path itself is unsat (which should have been caught earlier)
+                logger.debug(
+                    "Uniswap V2 invariant holds (satisfiable)", pool=pool_address
+                )
+                solver.pop()
+                return True  # Treat as holding if not proven violated
 
     except Exception as e:
-        logger.exception("Error checking Uniswap V2 invariant", pool=pool_address, error=str(e))
-        solver.pop() # Ensure pop on error
+        logger.exception(
+            "Error checking Uniswap V2 invariant", pool=pool_address, error=str(e)
+        )
+        solver.pop()  # Ensure pop on error
         return None
     finally:
         # This might cause issues if an error occurred before the final pop
         # solver.pop() # Already popped in try/except blocks
         pass
+
 
 # Add more constraint functions as needed:
 # - check_uniswap_v3_liquidity_invariant(...)

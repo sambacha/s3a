@@ -6,28 +6,35 @@ import structlog
 
 logger = structlog.get_logger()
 
+
 @dataclass
 class SwapMethodSignature:
     """Definition of a swap method signature pattern"""
-    method_id: str      # 4-byte method signature (hex string, e.g., "0x...")
-    name: str           # Human-readable name
-    signature: str      # Full function signature string, e.g., "swapExactTokensForTokens(uint256,uint256,address[],address,uint256)"
+
+    method_id: str  # 4-byte method signature (hex string, e.g., "0x...")
+    name: str  # Human-readable name
+    signature: str  # Full function signature string, e.g., "swapExactTokensForTokens(uint256,uint256,address[],address,uint256)"
     # Optional: Keep simplified positions for quick checks or specific logic if needed
     # token_positions: List[int]
     # amount_positions: List[int]
-    swap_type: str      # ETH_TO_TOKEN, TOKEN_TO_ETH, TOKEN_TO_TOKEN, TRANSFER
-    dex_type: str       # UNISWAP_V2, UNISWAP_V3, SUSHISWAP, ERC20, etc.
-    path_param_name: Optional[str] = None # Name of the 'path' parameter in the signature, if applicable
+    swap_type: str  # ETH_TO_TOKEN, TOKEN_TO_ETH, TOKEN_TO_TOKEN, TRANSFER
+    dex_type: str  # UNISWAP_V2, UNISWAP_V3, SUSHISWAP, ERC20, etc.
+    path_param_name: Optional[str] = (
+        None  # Name of the 'path' parameter in the signature, if applicable
+    )
+
 
 @dataclass
 class SwapEventSignature:
     """Definition of a swap event signature pattern"""
+
     topic0: str  # Event signature hash (hex string, e.g., "0x...")
-    name: str    # Human-readable name
+    name: str  # Human-readable name
     # Positions relative to data or indexed topics. ABI decoding needed.
     token_positions: Dict[str, int]  # Placeholder: Mapping param name to position
-    amount_positions: Dict[str, int] # Placeholder: Mapping param name to position
-    dex_type: str   # UNISWAP_V2, UNISWAP_V3, SUSHISWAP, etc.
+    amount_positions: Dict[str, int]  # Placeholder: Mapping param name to position
+    dex_type: str  # UNISWAP_V2, UNISWAP_V3, SUSHISWAP, etc.
+
 
 # --- Known Signatures and Addresses ---
 # TODO: Consider loading these from a config file (YAML/JSON) for easier updates.
@@ -35,76 +42,108 @@ class SwapEventSignature:
 # Method Signatures (with full signature strings)
 UNISWAP_V2_SWAP_METHODS = [
     SwapMethodSignature(
-        method_id="0x38ed1739", name="swapExactTokensForTokens",
+        method_id="0x38ed1739",
+        name="swapExactTokensForTokens",
         signature="swapExactTokensForTokens(uint256,uint256,address[],address,uint256)",
-        path_param_name="path", swap_type="TOKEN_TO_TOKEN", dex_type="UNISWAP_V2"
+        path_param_name="path",
+        swap_type="TOKEN_TO_TOKEN",
+        dex_type="UNISWAP_V2",
     ),
     SwapMethodSignature(
-        method_id="0x7ff36ab5", name="swapExactETHForTokens",
+        method_id="0x7ff36ab5",
+        name="swapExactETHForTokens",
         signature="swapExactETHForTokens(uint256,address[],address,uint256)",
-        path_param_name="path", swap_type="ETH_TO_TOKEN", dex_type="UNISWAP_V2"
+        path_param_name="path",
+        swap_type="ETH_TO_TOKEN",
+        dex_type="UNISWAP_V2",
     ),
     SwapMethodSignature(
-        method_id="0x18cbafe5", name="swapExactTokensForETH",
+        method_id="0x18cbafe5",
+        name="swapExactTokensForETH",
         signature="swapExactTokensForETH(uint256,uint256,address[],address,uint256)",
-        path_param_name="path", swap_type="TOKEN_TO_ETH", dex_type="UNISWAP_V2"
+        path_param_name="path",
+        swap_type="TOKEN_TO_ETH",
+        dex_type="UNISWAP_V2",
     ),
     SwapMethodSignature(
-        method_id="0x5f575529", name="swapExactTokensForTokensSupportingFeeOnTransferTokens",
+        method_id="0x5f575529",
+        name="swapExactTokensForTokensSupportingFeeOnTransferTokens",
         signature="swapExactTokensForTokensSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)",
-        path_param_name="path", swap_type="TOKEN_TO_TOKEN", dex_type="UNISWAP_V2"
-    ),
-     SwapMethodSignature(
-        method_id="0xfb3bdb41", name="swapETHForExactTokens",
-        signature="swapETHForExactTokens(uint256,address[],address,uint256)",
-        path_param_name="path", swap_type="ETH_TO_TOKEN", dex_type="UNISWAP_V2"
+        path_param_name="path",
+        swap_type="TOKEN_TO_TOKEN",
+        dex_type="UNISWAP_V2",
     ),
     SwapMethodSignature(
-        method_id="0xb6f9de95", name="swapExactTokensForETHSupportingFeeOnTransferTokens",
+        method_id="0xfb3bdb41",
+        name="swapETHForExactTokens",
+        signature="swapETHForExactTokens(uint256,address[],address,uint256)",
+        path_param_name="path",
+        swap_type="ETH_TO_TOKEN",
+        dex_type="UNISWAP_V2",
+    ),
+    SwapMethodSignature(
+        method_id="0xb6f9de95",
+        name="swapExactTokensForETHSupportingFeeOnTransferTokens",
         signature="swapExactTokensForETHSupportingFeeOnTransferTokens(uint256,uint256,address[],address,uint256)",
-        path_param_name="path", swap_type="TOKEN_TO_ETH", dex_type="UNISWAP_V2"
+        path_param_name="path",
+        swap_type="TOKEN_TO_ETH",
+        dex_type="UNISWAP_V2",
     ),
     # Add other Uniswap V2 methods...
 ]
 
 UNISWAP_V3_SWAP_METHODS = [
     SwapMethodSignature(
-        method_id="0x414bf389", name="exactInputSingle",
+        method_id="0x414bf389",
+        name="exactInputSingle",
         signature="exactInputSingle((address,address,uint24,address,uint256,uint256,uint256,uint160))",
-        path_param_name=None, # Path is implicit in tokenIn/tokenOut within the struct
-        swap_type="TOKEN_TO_TOKEN", dex_type="UNISWAP_V3"
+        path_param_name=None,  # Path is implicit in tokenIn/tokenOut within the struct
+        swap_type="TOKEN_TO_TOKEN",
+        dex_type="UNISWAP_V3",
     ),
     SwapMethodSignature(
-        method_id="0xc04b8d59", name="exactInput",
+        method_id="0xc04b8d59",
+        name="exactInput",
         signature="exactInput((bytes,address,uint256,uint256,uint160))",
-        path_param_name="path", # Path is bytes, needs special decoding
-        swap_type="TOKEN_TO_TOKEN", dex_type="UNISWAP_V3"
+        path_param_name="path",  # Path is bytes, needs special decoding
+        swap_type="TOKEN_TO_TOKEN",
+        dex_type="UNISWAP_V3",
     ),
     SwapMethodSignature(
-        method_id="0x5ae401dc", name="exactOutputSingle",
+        method_id="0x5ae401dc",
+        name="exactOutputSingle",
         signature="exactOutputSingle((address,address,uint24,address,uint256,uint256,uint256,uint160))",
-        path_param_name=None, # Path implicit in tokenIn/tokenOut
-        swap_type="TOKEN_TO_TOKEN", dex_type="UNISWAP_V3"
+        path_param_name=None,  # Path implicit in tokenIn/tokenOut
+        swap_type="TOKEN_TO_TOKEN",
+        dex_type="UNISWAP_V3",
     ),
     SwapMethodSignature(
-        method_id="0x09b81346", name="exactOutput",
+        method_id="0x09b81346",
+        name="exactOutput",
         signature="exactOutput((bytes,address,uint256,uint256,uint160))",
-        path_param_name="path", # Path is bytes
-        swap_type="TOKEN_TO_TOKEN", dex_type="UNISWAP_V3"
+        path_param_name="path",  # Path is bytes
+        swap_type="TOKEN_TO_TOKEN",
+        dex_type="UNISWAP_V3",
     ),
     # Add other Uniswap V3 methods...
 ]
 
 TOKEN_TRANSFER_METHODS = [
     SwapMethodSignature(
-        method_id="0xa9059cbb", name="transfer",
+        method_id="0xa9059cbb",
+        name="transfer",
         signature="transfer(address,uint256)",
-        path_param_name=None, swap_type="TRANSFER", dex_type="ERC20"
+        path_param_name=None,
+        swap_type="TRANSFER",
+        dex_type="ERC20",
     ),
     SwapMethodSignature(
-        method_id="0x23b872dd", name="transferFrom",
+        method_id="0x23b872dd",
+        name="transferFrom",
         signature="transferFrom(address,address,uint256)",
-        path_param_name=None, swap_type="TRANSFER", dex_type="ERC20"
+        path_param_name=None,
+        swap_type="TRANSFER",
+        dex_type="ERC20",
     ),
 ]
 
@@ -115,15 +154,25 @@ ALL_METHODS = ALL_SWAP_METHODS + TOKEN_TRANSFER_METHODS
 SWAP_EVENTS = [
     SwapEventSignature(
         topic0="0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822",
-        name="Swap", # Uniswap V2 Pair Swap
-        token_positions={}, amount_positions={"amount0In": 1, "amount1In": 2, "amount0Out": 3, "amount1Out": 4}, # In data part
-        dex_type="UNISWAP_V2"
+        name="Swap",  # Uniswap V2 Pair Swap
+        token_positions={},
+        amount_positions={
+            "amount0In": 1,
+            "amount1In": 2,
+            "amount0Out": 3,
+            "amount1Out": 4,
+        },  # In data part
+        dex_type="UNISWAP_V2",
     ),
     SwapEventSignature(
         topic0="0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67",
-        name="Swap", # Uniswap V3 Pool Swap
-        token_positions={}, amount_positions={"amount0": 1, "amount1": 2}, # In data part, sqrtPriceX96 etc also present
-        dex_type="UNISWAP_V3"
+        name="Swap",  # Uniswap V3 Pool Swap
+        token_positions={},
+        amount_positions={
+            "amount0": 1,
+            "amount1": 2,
+        },  # In data part, sqrtPriceX96 etc also present
+        dex_type="UNISWAP_V3",
     ),
     # Add other relevant events (e.g., Sync for V2, Mint/Burn for V3 liquidity) if needed
 ]
@@ -176,19 +225,22 @@ KNOWN_ETH_USDC_POOLS = {
     },
     "goerli": {
         # Add known Goerli pools if needed
-    }
+    },
 }
 
 
 # --- Helper Functions ---
 
+
 def get_token_address(symbol: str, network: str = "mainnet") -> Optional[str]:
     """Get the address of a token by symbol for a given network."""
     return TOKEN_ADDRESSES.get(network, {}).get(symbol)
 
+
 def get_dex_router_address(dex_name: str, network: str = "mainnet") -> Optional[str]:
     """Get the address of a DEX router by name for a given network."""
     return DEX_ROUTER_ADDRESSES.get(network, {}).get(dex_name)
+
 
 def is_eth_usdc_path(path: List[str], network: str = "mainnet") -> bool:
     """
@@ -221,6 +273,7 @@ def is_eth_usdc_path(path: List[str], network: str = "mainnet") -> bool:
 
     return False
 
+
 def get_method_info(method_id: str) -> Optional[SwapMethodSignature]:
     """Get method information for a given method ID."""
     method_id_lower = method_id.lower()
@@ -229,6 +282,7 @@ def get_method_info(method_id: str) -> Optional[SwapMethodSignature]:
             return method
     return None
 
+
 def get_event_info(topic0: str) -> Optional[SwapEventSignature]:
     """Get event information for a given topic0 hash."""
     topic0_lower = topic0.lower()
@@ -236,6 +290,7 @@ def get_event_info(topic0: str) -> Optional[SwapEventSignature]:
         if event.topic0.lower() == topic0_lower:
             return event
     return None
+
 
 def is_known_eth_usdc_pool(pool_address: str, network: str = "mainnet") -> bool:
     """Check if a pool address is a known ETH/USDC pool for the network."""

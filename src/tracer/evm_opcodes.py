@@ -4,8 +4,10 @@ EVM Opcode definitions and utilities for the symbolic tracer.
 
 from enum import IntEnum
 
+
 class Opcode(IntEnum):
     """EVM Opcodes"""
+
     STOP = 0x00
     ADD = 0x01
     MUL = 0x02
@@ -16,9 +18,9 @@ class Opcode(IntEnum):
     SMOD = 0x07
     ADDMOD = 0x08
     MULMOD = 0x09
-    EXP = 0x0a
-    SIGNEXTEND = 0x0b
-    
+    EXP = 0x0A
+    SIGNEXTEND = 0x0B
+
     LT = 0x10
     GT = 0x11
     SLT = 0x12
@@ -29,13 +31,13 @@ class Opcode(IntEnum):
     OR = 0x17
     XOR = 0x18
     NOT = 0x19
-    BYTE = 0x1a
-    SHL = 0x1b
-    SHR = 0x1c
-    SAR = 0x1d
-    
+    BYTE = 0x1A
+    SHL = 0x1B
+    SHR = 0x1C
+    SAR = 0x1D
+
     SHA3 = 0x20
-    
+
     ADDRESS = 0x30
     BALANCE = 0x31
     ORIGIN = 0x32
@@ -46,13 +48,13 @@ class Opcode(IntEnum):
     CALLDATACOPY = 0x37
     CODESIZE = 0x38
     CODECOPY = 0x39
-    GASPRICE = 0x3a
-    EXTCODESIZE = 0x3b
-    EXTCODECOPY = 0x3c
-    RETURNDATASIZE = 0x3d
-    RETURNDATACOPY = 0x3e
-    EXTCODEHASH = 0x3f
-    
+    GASPRICE = 0x3A
+    EXTCODESIZE = 0x3B
+    EXTCODECOPY = 0x3C
+    RETURNDATASIZE = 0x3D
+    RETURNDATACOPY = 0x3E
+    EXTCODEHASH = 0x3F
+
     BLOCKHASH = 0x40
     COINBASE = 0x41
     TIMESTAMP = 0x42
@@ -62,7 +64,7 @@ class Opcode(IntEnum):
     CHAINID = 0x46
     SELFBALANCE = 0x47
     BASEFEE = 0x48
-    
+
     POP = 0x50
     MLOAD = 0x51
     MSTORE = 0x52
@@ -73,9 +75,9 @@ class Opcode(IntEnum):
     JUMPI = 0x57
     PC = 0x58
     MSIZE = 0x59
-    GAS = 0x5a
-    JUMPDEST = 0x5b
-    
+    GAS = 0x5A
+    JUMPDEST = 0x5B
+
     PUSH1 = 0x60
     PUSH2 = 0x61
     PUSH3 = 0x62
@@ -86,12 +88,12 @@ class Opcode(IntEnum):
     PUSH8 = 0x67
     PUSH9 = 0x68
     PUSH10 = 0x69
-    PUSH11 = 0x6a
-    PUSH12 = 0x6b
-    PUSH13 = 0x6c
-    PUSH14 = 0x6d
-    PUSH15 = 0x6e
-    PUSH16 = 0x6f
+    PUSH11 = 0x6A
+    PUSH12 = 0x6B
+    PUSH13 = 0x6C
+    PUSH14 = 0x6D
+    PUSH15 = 0x6E
+    PUSH16 = 0x6F
     PUSH17 = 0x70
     PUSH18 = 0x71
     PUSH19 = 0x72
@@ -102,13 +104,13 @@ class Opcode(IntEnum):
     PUSH24 = 0x77
     PUSH25 = 0x78
     PUSH26 = 0x79
-    PUSH27 = 0x7a
-    PUSH28 = 0x7b
-    PUSH29 = 0x7c
-    PUSH30 = 0x7d
-    PUSH31 = 0x7e
-    PUSH32 = 0x7f
-    
+    PUSH27 = 0x7A
+    PUSH28 = 0x7B
+    PUSH29 = 0x7C
+    PUSH30 = 0x7D
+    PUSH31 = 0x7E
+    PUSH32 = 0x7F
+
     DUP1 = 0x80
     DUP2 = 0x81
     DUP3 = 0x82
@@ -119,13 +121,13 @@ class Opcode(IntEnum):
     DUP8 = 0x87
     DUP9 = 0x88
     DUP10 = 0x89
-    DUP11 = 0x8a
-    DUP12 = 0x8b
-    DUP13 = 0x8c
-    DUP14 = 0x8d
-    DUP15 = 0x8e
-    DUP16 = 0x8f
-    
+    DUP11 = 0x8A
+    DUP12 = 0x8B
+    DUP13 = 0x8C
+    DUP14 = 0x8D
+    DUP15 = 0x8E
+    DUP16 = 0x8F
+
     SWAP1 = 0x90
     SWAP2 = 0x91
     SWAP3 = 0x92
@@ -136,29 +138,30 @@ class Opcode(IntEnum):
     SWAP8 = 0x97
     SWAP9 = 0x98
     SWAP10 = 0x99
-    SWAP11 = 0x9a
-    SWAP12 = 0x9b
-    SWAP13 = 0x9c
-    SWAP14 = 0x9d
-    SWAP15 = 0x9e
-    SWAP16 = 0x9f
-    
-    LOG0 = 0xa0
-    LOG1 = 0xa1
-    LOG2 = 0xa2
-    LOG3 = 0xa3
-    LOG4 = 0xa4
-    
-    CREATE = 0xf0
-    CALL = 0xf1
-    CALLCODE = 0xf2
-    RETURN = 0xf3
-    DELEGATECALL = 0xf4
-    CREATE2 = 0xf5
-    STATICCALL = 0xfa
-    REVERT = 0xfd
-    INVALID = 0xfe
-    SELFDESTRUCT = 0xff
+    SWAP11 = 0x9A
+    SWAP12 = 0x9B
+    SWAP13 = 0x9C
+    SWAP14 = 0x9D
+    SWAP15 = 0x9E
+    SWAP16 = 0x9F
+
+    LOG0 = 0xA0
+    LOG1 = 0xA1
+    LOG2 = 0xA2
+    LOG3 = 0xA3
+    LOG4 = 0xA4
+
+    CREATE = 0xF0
+    CALL = 0xF1
+    CALLCODE = 0xF2
+    RETURN = 0xF3
+    DELEGATECALL = 0xF4
+    CREATE2 = 0xF5
+    STATICCALL = 0xFA
+    REVERT = 0xFD
+    INVALID = 0xFE
+    SELFDESTRUCT = 0xFF
+
 
 # Map from opcode value to name
 OPCODE_NAMES = {int(code): name for name, code in Opcode.__members__.items()}
@@ -181,7 +184,6 @@ STACK_EFFECTS = {
     Opcode.MULMOD: (3, 1),
     Opcode.EXP: (2, 1),
     Opcode.SIGNEXTEND: (2, 1),
-    
     # 10s comparisons
     Opcode.LT: (2, 1),
     Opcode.GT: (2, 1),
@@ -197,10 +199,8 @@ STACK_EFFECTS = {
     Opcode.SHL: (2, 1),
     Opcode.SHR: (2, 1),
     Opcode.SAR: (2, 1),
-    
     # 20s hashing
     Opcode.SHA3: (2, 1),
-    
     # 30s environmental
     Opcode.ADDRESS: (0, 1),
     Opcode.BALANCE: (1, 1),
@@ -218,7 +218,6 @@ STACK_EFFECTS = {
     Opcode.RETURNDATASIZE: (0, 1),
     Opcode.RETURNDATACOPY: (3, 0),
     Opcode.EXTCODEHASH: (1, 1),
-    
     # 40s block info
     Opcode.BLOCKHASH: (1, 1),
     Opcode.COINBASE: (0, 1),
@@ -229,7 +228,6 @@ STACK_EFFECTS = {
     Opcode.CHAINID: (0, 1),
     Opcode.SELFBALANCE: (0, 1),
     Opcode.BASEFEE: (0, 1),
-    
     # 50s stack, memory, storage, flow
     Opcode.POP: (1, 0),
     Opcode.MLOAD: (1, 1),
@@ -243,14 +241,12 @@ STACK_EFFECTS = {
     Opcode.MSIZE: (0, 1),
     Opcode.GAS: (0, 1),
     Opcode.JUMPDEST: (0, 0),
-
     # Logs
     Opcode.LOG0: (2, 0),
     Opcode.LOG1: (3, 0),
     Opcode.LOG2: (4, 0),
     Opcode.LOG3: (5, 0),
     Opcode.LOG4: (6, 0),
-    
     # System operations
     Opcode.CREATE: (3, 1),
     Opcode.CALL: (7, 1),
@@ -276,54 +272,56 @@ for i in range(1, 17):
 for i in range(1, 17):
     STACK_EFFECTS[Opcode.SWAP1 + i - 1] = (i + 1, i + 1)
 
+
 def disassemble_bytecode(bytecode):
     """
     Disassemble EVM bytecode into a list of operations.
-    
+
     Args:
         bytecode: Hexadecimal string representing the bytecode
-        
+
     Returns:
         List of tuples (opcode_name, opcode_value, push_data, offset)
     """
-    if bytecode.startswith('0x'):
+    if bytecode.startswith("0x"):
         bytecode = bytecode[2:]
-    
+
     bytecode_bytes = bytes.fromhex(bytecode)
     operations = []
     i = 0
-    
+
     while i < len(bytecode_bytes):
         opcode_value = bytecode_bytes[i]
         offset = i
         i += 1
-        
+
         # Get opcode name
         opcode_name = OPCODE_NAMES.get(opcode_value, f"UNKNOWN_{opcode_value:02x}")
-        
+
         # Handle PUSH operations
         push_data = None
         if Opcode.PUSH1 <= opcode_value <= Opcode.PUSH32:
             push_bytes = opcode_value - Opcode.PUSH1 + 1
             if i + push_bytes <= len(bytecode_bytes):
-                push_data = bytecode_bytes[i:i+push_bytes]
+                push_data = bytecode_bytes[i : i + push_bytes]
                 i += push_bytes
             else:
                 # Not enough bytes for push operation
                 push_data = bytecode_bytes[i:]
                 i = len(bytecode_bytes)
-        
+
         operations.append((opcode_name, opcode_value, push_data, offset))
-    
+
     return operations
+
 
 def get_stack_effect(opcode):
     """
     Get the stack effect of an opcode (how many items it pops and pushes).
-    
+
     Args:
         opcode: The opcode value
-        
+
     Returns:
         Tuple (stack_in, stack_out)
     """

@@ -1,6 +1,32 @@
 # SMT EVM Storage Layout Analyzer
 
 
+
+```bash
+
+# Run all tests
+$ bash run_tests.sh
+
+# Run specific test groups
+$ bash run_tests.sh --context    # For TransactionalContext and context builder tests
+$ bash run_tests.sh --jump       # For jump pattern analysis tests
+$ bash run_tests.sh --function   # For function boundary tests
+$ bash run_tests.sh --symbolic   # For symbolic execution tests
+
+# Generate coverage report
+$ bash run_tests.sh --coverage
+
+# For more options
+$ bash run_tests.sh --help
+
+
+```
+
+
+
+
+
+
 > [!WARNING]
 > A.I. Generated Code, there be dragons
 >

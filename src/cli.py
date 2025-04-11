@@ -18,12 +18,33 @@ from pathlib import Path
 from web3 import Web3
 from collections import defaultdict # Added for access list generation
 
+# Add parent directory to Python path to make imports work correctly
+# when this script is executed directly
+if __name__ == "__main__":
+    # Get the directory containing this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Add parent directory to path
+    parent_dir = os.path.dirname(script_dir)
+    sys.path.insert(0, parent_dir)
+
 # Define ABI type locally since it's not exported from web3.types anymore
 ABI = List[Dict[str, Any]]
 
-from .tracer.storage_analyzer import StorageAnalyzer # Changed to relative import
-from .tracer.enhanced_storage_analyzer import EnhancedStorageAnalyzer # Changed to relative import
+# Go back to relative imports which is safer for this setup
+from .tracer.storage_analyzer import StorageAnalyzer
+from .tracer.enhanced_storage_analyzer import EnhancedStorageAnalyzer
 from .tracer.etherscan_client import EtherscanClient
+from .tracer.access_list_generator import generate_access_list, format_access_list
+
+# Fallback to direct imports if run as script
+if __name__ == "__main__":
+    try:
+        from src.tracer.storage_analyzer import StorageAnalyzer
+        from src.tracer.enhanced_storage_analyzer import EnhancedStorageAnalyzer
+        from src.tracer.etherscan_client import EtherscanClient
+        from src.tracer.access_list_generator import generate_access_list, format_access_list
+    except ImportError:
+        pass  # Already imported above
 
 # Configure logging
 logging.basicConfig(
@@ -640,6 +661,13 @@ def main() -> int:
         help="Enable verbose logging"
     )
     
+    # Access list options
+    parser.add_argument(
+        "--generate-access-list",
+        metavar="TX_HASH",
+        help="Generate EIP-2930 access list for a transaction"
+    )
+    
     args = parser.parse_args()
     
     # Set logging level
@@ -819,81 +847,4 @@ def main() -> int:
                 anvil_process.wait()
 
 
-# --- Access List Generation Logic ---
-
-def generate_access_list(web3: Web3, tx_hash: str) -> List[Dict[str, Any]]:
-    """
-    Generates an EIP-2930 access list for a given transaction hash.
-
-    Args:
-        web3: Connected Web3 instance.
-        tx_hash: The transaction hash as a hex string.
-
-    Returns:
-        A list formatted according to EIP-2930.
-
-    Raises:
-        ValueError: If the trace cannot be retrieved or parsed.
-        Exception: For other web3 or processing errors.
-    """
-    logger.info(f"Fetching trace for transaction {tx_hash}...")
-    try:
-        # Use default tracer which includes structLogs with storage
-        trace = web3.provider.make_request("debug_traceTransaction", [tx_hash])
-        if "result" not in trace:
-             raise ValueError(f"Failed to get trace for {tx_hash}. Response: {trace.get('error', 'Unknown error')}")
-        struct_logs = trace["result"].get("structLogs")
-        if not struct_logs:
-            raise ValueError(f"No structLogs found in trace for {tx_hash}")
-
-    except Exception as e:
-        logger.error(f"Error fetching or parsing trace: {e}")
-        return [] # Return empty list on error
-
-    logger.info(f"Processing {len(struct_logs)} trace steps...")
-    access_list_data: Dict[str, Set[str]] = defaultdict(set) # address -> set(keys)
-
-    # Pre-populate with sender and receiver
-    sender: Optional[str] = None # Initialize to None
-    receiver: Optional[str] = None # Initialize to None
-    try:
-        tx_data = web3.eth.get_transaction(tx_hash)
-        sender = tx_data.get('from')
-        receiver = tx_data.get('to')
-        if sender:
-            access_list_data[web3.to_checksum_address(sender)] # Ensure sender is present
-        if receiver:
-            access_list_data[web3.to_checksum_address(receiver)] # Ensure receiver is present
-    except Exception as e:
-        logger.warning(f"Could not get transaction details to pre-populate sender/receiver: {e}")
-
-
-    call_stack = [] # To keep track of current contract context
-
-    for i, log in enumerate(struct_logs):
-        # Track call stack depth to determine current address context
-        depth = log.get("depth")
-        op = log.get("op")
-
-        # Update call stack (simplified)
-        # A more robust method would parse CALL/CREATE inputs fully
-        if len(call_stack) < depth:
-             # Inferring called address is complex from default trace, might need callTracer
-             # For now, we rely on SLOAD/SSTORE context if available
-             # Or addresses accessed via stack for CALL/STATICCALL etc.
-             pass # Placeholder
-        elif len(call_stack) > depth:
-             call_stack = call_stack[:depth] # Returned from call
-
-        # Get current address (best effort)
-        # This is the hardest part without a dedicated call tracer.
-        # We assume the address context is implicitly the contract being executed.
-        # For SLOAD/SSTORE, the address is the one whose storage is modified.
-        # For CALLs, the target address is on the stack.
-        current_address = None
-        stack = log.get("stack", [])
-        if not stack: continue
-
-        try:
-            if op in ("SLOAD", "SSTORE"):
-                # SLOAD key is stack[-1],
+    # Access list options - COMPLETELY REMOVED FROM HERE

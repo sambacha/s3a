@@ -197,5 +197,5 @@ def identify_basic_blocks(bytecode):
             if block not in successor.predecessors:
                  successor.predecessors.append(block)
 
-    print(f"[Debug] identify_basic_blocks returning {len(basic_blocks)} blocks", file=sys.stderr) # Debug
-    return basic_blocks
+    print(f"[Debug] identify_basic_blocks returning {len(basic_blocks)} blocks and instruction map", file=sys.stderr) # Debug
+    return basic_blocks, instr_map_raw

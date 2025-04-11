@@ -830,44 +830,176 @@ class SymbolicExecutor:
     def _handle_div(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)  # Unsigned division
+        """Handles DIV opcode (unsigned division)."""
+        if len(state.stack) < 2:
+            raise IndexError("DIV Error: Stack underflow")
+        op1 = state.stack.pop()
+        op2 = state.stack.pop()
+        # Check for division by zero
+        if op2.is_concrete() and op2.get_concrete_value() == 0:
+            result = self.create_concrete_value(0)
+        else:
+            # Use Z3's unsigned division
+            result = op1 // op2 # Uses SymbolicValue.__floordiv__ -> UDiv
+        state.stack.append(result)
+        logger.debug("DIV executed", pc=instruction.offset)
+        return {"next_state": state}
 
     def _handle_sdiv(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)  # Signed division
+        """Handles SDIV opcode (signed division)."""
+        if len(state.stack) < 2:
+            raise IndexError("SDIV Error: Stack underflow")
+        op1 = state.stack.pop()
+        op2 = state.stack.pop()
+        # Check for division by zero and INT_MIN / -1 overflow
+        if op2.is_concrete() and op2.get_concrete_value() == 0:
+            result = self.create_concrete_value(0)
+        # elif op1.is_concrete() and op2.is_concrete() and op1.get_concrete_value() == MIN_S256 and op2.get_concrete_value() == -1:
+        #     result = self.create_concrete_value(MIN_S256) # Overflow case
+        else:
+            # Use Z3's signed division (default for / operator)
+             result = op1 / op2 # Uses SymbolicValue.__truediv__ -> default signed division
+        state.stack.append(result)
+        logger.debug("SDIV executed", pc=instruction.offset)
+        return {"next_state": state}
 
     def _handle_mod(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles MOD opcode (unsigned modulo)."""
+        if len(state.stack) < 2:
+            raise IndexError("MOD Error: Stack underflow")
+        op1 = state.stack.pop()
+        op2 = state.stack.pop()
+        if op2.is_concrete() and op2.get_concrete_value() == 0:
+            result = self.create_concrete_value(0)
+        else:
+            # Use Z3's unsigned remainder
+            result = op1 % op2 # Uses SymbolicValue.__mod__ -> URem
+        state.stack.append(result)
+        logger.debug("MOD executed", pc=instruction.offset)
+        return {"next_state": state}
 
     def _handle_smod(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles SMOD opcode (signed modulo)."""
+        if len(state.stack) < 2:
+            raise IndexError("SMOD Error: Stack underflow")
+        op1 = state.stack.pop()
+        op2 = state.stack.pop()
+        if op2.is_concrete() and op2.get_concrete_value() == 0:
+            result = self.create_concrete_value(0)
+        else:
+            # Use Z3's signed remainder
+            result = symbolic_binary_op(z3.SRem, op1, op2, self.solver_context)
+        state.stack.append(result)
+        logger.debug("SMOD executed", pc=instruction.offset)
+        return {"next_state": state}
 
     def _handle_addmod(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles ADDMOD opcode."""
+        if len(state.stack) < 3:
+            raise IndexError("ADDMOD Error: Stack underflow")
+        op1 = state.stack.pop()
+        op2 = state.stack.pop()
+        mod_sv = state.stack.pop()
+
+        if mod_sv.is_concrete() and mod_sv.get_concrete_value() == 0:
+            result = self.create_concrete_value(0)
+        else:
+            # Calculate (op1 + op2) % mod symbolically
+            sum_val = op1 + op2
+            result = sum_val % mod_sv # Uses SymbolicValue.__mod__ -> URem
+        state.stack.append(result)
+        logger.debug("ADDMOD executed", pc=instruction.offset)
+        return {"next_state": state}
 
     def _handle_mulmod(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles MULMOD opcode."""
+        if len(state.stack) < 3:
+            raise IndexError("MULMOD Error: Stack underflow")
+        op1 = state.stack.pop()
+        op2 = state.stack.pop()
+        mod_sv = state.stack.pop()
+
+        if mod_sv.is_concrete() and mod_sv.get_concrete_value() == 0:
+            result = self.create_concrete_value(0)
+        else:
+            # Calculate (op1 * op2) % mod symbolically
+            prod_val = op1 * op2
+            result = prod_val % mod_sv # Uses SymbolicValue.__mod__ -> URem
+        state.stack.append(result)
+        logger.debug("MULMOD executed", pc=instruction.offset)
+        return {"next_state": state}
 
     def _handle_exp(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles EXP opcode (exponentiation)."""
+        if len(state.stack) < 2:
+            raise IndexError("EXP Error: Stack underflow")
+        base_sv = state.stack.pop()
+        exponent_sv = state.stack.pop()
+
+        # Symbolic exponentiation is generally not supported directly by SMT solvers.
+        # Simplification: If both are concrete, compute it. Otherwise, return symbolic.
+        if base_sv.is_concrete() and exponent_sv.is_concrete():
+            base = base_sv.get_concrete_value()
+            exponent = exponent_sv.get_concrete_value()
+            # EVM exponentiation is pow(base, exponent) % (2**256)
+            concrete_result = pow(base, exponent, 2**256)
+            result = self.create_concrete_value(concrete_result)
+        else:
+            logger.warning("Symbolic EXP encountered, returning symbolic value.")
+            result = self.create_symbolic_variable(f"exp_{instruction.offset}")
+
+        state.stack.append(result)
+        logger.debug("EXP executed", pc=instruction.offset)
+        return {"next_state": state}
 
     def _handle_signextend(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(
-            instruction, state
-        )  # TODO: Implement SIGNEXTEND
+        """Handles SIGNEXTEND opcode."""
+        # byte_index_sv = stack.pop()
+        # value_sv = stack.pop()
+        # if byte_index_sv.is_concrete() and value_sv.is_concrete():
+        #     byte_index = byte_index_sv.get_concrete_value()
+        #     value = value_sv.get_concrete_value()
+        #     if byte_index < 32:
+        #         sign_bit_index = byte_index * 8 + 7
+        #         sign_bit = (value >> sign_bit_index) & 1
+        #         mask = (1 << (sign_bit_index + 1)) - 1
+        #         extended_value = value & mask
+        #         if sign_bit:
+        #             extended_value |= ~mask # Fill higher bits with 1s
+        #         result = self.create_concrete_value(extended_value)
+        #     else: # byte_index >= 31 means no extension needed or full value
+        #         result = value_sv
+        # else:
+        #     # Symbolic SIGNEXTEND is complex, return symbolic for now
+        #     logger.warning("Symbolic SIGNEXTEND encountered, returning symbolic value.")
+        #     result = self.create_symbolic_variable(f"signextend_{instruction.offset}")
+        # state.stack.append(result)
+        # logger.debug("SIGNEXTEND executed", pc=instruction.offset)
+        # return {"next_state": state}
+        # Simplified: Return symbolic for now due to complexity
+        if len(state.stack) < 2:
+            raise IndexError("SIGNEXTEND Error: Stack underflow")
+        state.stack.pop() # byte_index
+        state.stack.pop() # value
+        logger.warning("Symbolic SIGNEXTEND encountered, returning symbolic value.")
+        result = self.create_symbolic_variable(f"signextend_{instruction.offset}")
+        state.stack.append(result)
+        return {"next_state": state}
+
 
     # 10s: Comparison & Bitwise Logic Operations
     def _handle_lt(
@@ -899,16 +1031,30 @@ class SymbolicExecutor:
     def _handle_slt(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(
-            instruction, state
-        )  # TODO: Implement SLT (signed)
+        """Handles SLT opcode (signed less than)."""
+        if len(state.stack) < 2:
+            raise IndexError("SLT Error: Stack underflow")
+        op1 = state.stack.pop()
+        op2 = state.stack.pop()
+        # Use Z3's signed comparison
+        result = symbolic_comparison_op(z3.SLT, op1, op2, self.solver_context)
+        state.stack.append(result)
+        logger.debug("SLT executed", pc=instruction.offset)
+        return {"next_state": state}
 
     def _handle_sgt(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(
-            instruction, state
-        )  # TODO: Implement SGT (signed)
+        """Handles SGT opcode (signed greater than)."""
+        if len(state.stack) < 2:
+            raise IndexError("SGT Error: Stack underflow")
+        op1 = state.stack.pop()
+        op2 = state.stack.pop()
+        # Use Z3's signed comparison
+        result = symbolic_comparison_op(z3.SGT, op1, op2, self.solver_context)
+        state.stack.append(result)
+        logger.debug("SGT executed", pc=instruction.offset)
+        return {"next_state": state}
 
     def _handle_eq(
         self, instruction: Instruction, state: SymbolicEVMState
@@ -989,30 +1135,120 @@ class SymbolicExecutor:
     def _handle_byte(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)  # TODO: Implement BYTE
+        """Handles BYTE opcode. Extracts a single byte from a word."""
+        if len(state.stack) < 2:
+            raise IndexError("BYTE Error: Stack underflow")
+        byte_index_sv = state.stack.pop()
+        value_sv = state.stack.pop()
+
+        if byte_index_sv.is_concrete() and value_sv.is_concrete():
+            byte_index = byte_index_sv.get_concrete_value()
+            value = value_sv.get_concrete_value()
+            if byte_index >= 32:
+                result_byte = 0
+            else:
+                # Extract the byte: shift right by (31-byte_index)*8 bits, then mask
+                shift_amount = (31 - byte_index) * 8
+                result_byte = (value >> shift_amount) & 0xFF
+            result = self.create_concrete_value(result_byte)
+        else:
+            # Symbolic BYTE implementation using Z3's Extract
+            # byte_index is the index from the left (most significant byte is 0)
+            # Z3 Extract uses bit indices from the right (least significant bit is 0)
+            # Example: byte_index 0 -> bits 255..248
+            # Example: byte_index 31 -> bits 7..0
+            logger.warning("Symbolic BYTE encountered, using Z3 Extract.")
+            byte_index_expr = byte_index_sv.to_z3(self.solver_context)
+            value_expr = value_sv.to_z3(self.solver_context)
+
+            # Default to 0 if index is out of bounds (>= 32)
+            # We need to calculate the bit indices based on the byte index
+            # high_bit = 255 - byte_index * 8
+            # low_bit = high_bit - 7 = 248 - byte_index * 8
+            # Z3 requires concrete values for Extract indices.
+            # If byte_index is symbolic, we cannot directly use Extract.
+            # Fallback: return a symbolic variable.
+            if not byte_index_sv.is_concrete():
+                 logger.error("Symbolic BYTE index encountered, returning symbolic value.")
+                 result = self.create_symbolic_variable(f"byte_{instruction.offset}")
+            else:
+                byte_index = byte_index_sv.get_concrete_value()
+                if byte_index >= 32:
+                     result = self.create_concrete_value(0)
+                else:
+                    high_bit = 255 - byte_index * 8
+                    low_bit = high_bit - 7
+                    # Extract the 8 bits
+                    extracted_byte_expr = z3.Extract(high_bit, low_bit, value_expr)
+                    # Zero-extend the 8-bit result back to 256 bits
+                    result_expr = z3.ZeroExt(248, extracted_byte_expr)
+                    result = SymbolicValue(type=SymbolicType.EXPRESSION, expression=result_expr, size=256)
+
+        state.stack.append(result)
+        logger.debug("BYTE executed", pc=instruction.offset)
+        return {"next_state": state}
+
 
     def _handle_shl(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)  # TODO: Implement SHL
+        """Handles SHL opcode (shift left)."""
+        if len(state.stack) < 2:
+            raise IndexError("SHL Error: Stack underflow")
+        shift_sv = state.stack.pop()
+        value_sv = state.stack.pop()
+        result = value_sv << shift_sv # Uses SymbolicValue.__lshift__ -> BVSHL
+        state.stack.append(result)
+        logger.debug("SHL executed", pc=instruction.offset)
+        return {"next_state": state}
 
     def _handle_shr(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles SHR opcode (logical shift right)."""
+        if len(state.stack) < 2:
+            raise IndexError("SHR Error: Stack underflow")
+        shift_sv = state.stack.pop()
+        value_sv = state.stack.pop()
+        result = value_sv >> shift_sv # Uses SymbolicValue.__rshift__ -> LShR
+        state.stack.append(result)
+        logger.debug("SHR executed", pc=instruction.offset)
+        return {"next_state": state}
 
     def _handle_sar(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles SAR opcode (arithmetic shift right)."""
+        if len(state.stack) < 2:
+            raise IndexError("SAR Error: Stack underflow")
+        shift_sv = state.stack.pop()
+        value_sv = state.stack.pop()
+        # Use Z3's arithmetic shift right
+        result = symbolic_binary_op(z3.BVASHR, value_sv, shift_sv, self.solver_context)
+        state.stack.append(result)
+        logger.debug("SAR executed", pc=instruction.offset)
+        return {"next_state": state}
 
     # 20s: SHA3
     def _handle_sha3(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(
-            instruction, state
-        )  # TODO: Implement SHA3 (KECCAK256)
+        """Handles SHA3/KECCAK256 opcode."""
+        if len(state.stack) < 2:
+            raise IndexError("SHA3 Error: Stack underflow")
+        offset_sv = state.stack.pop()
+        size_sv = state.stack.pop()
+
+        # Symbolic hashing is extremely complex.
+        # We need to read the memory region (potentially symbolic offset/size)
+        # and apply the hash function.
+        # Simplification: Return a symbolic variable representing the hash result.
+        logger.warning("Symbolic SHA3 encountered, returning symbolic value.")
+        # We could try to make the name more specific if offset/size are concrete
+        result = self.create_symbolic_variable(f"sha3_{instruction.offset}")
+        state.stack.append(result)
+        return {"next_state": state}
+
 
     # 30s: Environmental Information
     def _handle_address(
@@ -1029,9 +1265,21 @@ class SymbolicExecutor:
     def _handle_balance(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(
-            instruction, state
-        )  # TODO: Implement BALANCE (requires external state lookup or symbolic modeling)
+        """Handles BALANCE opcode. Pushes the balance of a given address."""
+        if len(state.stack) < 1:
+            raise IndexError("BALANCE Error: Stack underflow")
+        address_sv = state.stack.pop()
+        # Requires external state or symbolic modeling. Return symbolic for now.
+        logger.warning("BALANCE opcode returning symbolic value.")
+        if address_sv.is_concrete():
+             addr_val = address_sv.get_concrete_value()
+             var_name = f"balance_0x{addr_val:x}_{instruction.offset}"
+        else:
+             var_name = f"balance_symbolic_{instruction.offset}"
+        result = self.create_symbolic_variable(var_name)
+        state.stack.append(result)
+        return {"next_state": state}
+
 
     def _handle_origin(
         self, instruction: Instruction, state: SymbolicEVMState
@@ -1138,9 +1386,13 @@ class SymbolicExecutor:
     def _handle_codesize(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(
-            instruction, state
-        )  # TODO: Implement CODESIZE
+        """Handles CODESIZE opcode. Pushes the size of the current contract's code."""
+        code_size = len(state.bytecode)
+        result = self.create_concrete_value(code_size, size=64) # Size is often 64-bit
+        state.stack.append(result)
+        logger.debug("CODESIZE executed", size=code_size, pc=instruction.offset)
+        return {"next_state": state}
+
 
     def _handle_codecopy(
         self, instruction: Instruction, state: SymbolicEVMState
@@ -1150,40 +1402,96 @@ class SymbolicExecutor:
     def _handle_gasprice(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles GASPRICE opcode. Pushes the transaction gas price."""
+        # Can be concrete if provided, otherwise symbolic
+        gasprice_val = state.registers.get("GASPRICE")
+        if gasprice_val is None:
+             logger.warning("GASPRICE missing from initial state, returning symbolic.")
+             gasprice_val = self.create_symbolic_variable(f"gasprice_{instruction.offset}")
+             state.registers["GASPRICE"] = gasprice_val # Store for consistency if needed later
+        state.stack.append(gasprice_val)
+        logger.debug("GASPRICE executed", pc=instruction.offset)
+        return {"next_state": state}
+
 
     def _handle_extcodesize(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles EXTCODESIZE opcode. Pushes the size of an external contract's code."""
+        if len(state.stack) < 1:
+            raise IndexError("EXTCODESIZE Error: Stack underflow")
+        address_sv = state.stack.pop()
+        # Requires external lookup or symbolic modeling. Return symbolic for now.
+        logger.warning("EXTCODESIZE opcode returning symbolic value.")
+        if address_sv.is_concrete():
+             addr_val = address_sv.get_concrete_value()
+             var_name = f"extcodesize_0x{addr_val:x}_{instruction.offset}"
+        else:
+             var_name = f"extcodesize_symbolic_{instruction.offset}"
+        result = self.create_symbolic_variable(var_name)
+        state.stack.append(result)
+        return {"next_state": state}
+
 
     def _handle_extcodecopy(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        return self._handle_unimplemented(instruction, state) # Requires external lookup and memory interaction
 
     def _handle_returndatasize(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles RETURNDATASIZE opcode. Pushes the size of the last call's return data."""
+        # Requires tracking return data buffer. Return concrete 0 for now.
+        logger.warning("RETURNDATASIZE opcode returning concrete 0 (simplification).")
+        result = self.create_concrete_value(0, size=64)
+        state.stack.append(result)
+        return {"next_state": state}
+
 
     def _handle_returndatacopy(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        return self._handle_unimplemented(instruction, state) # Requires return data buffer and memory interaction
 
     def _handle_extcodehash(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles EXTCODEHASH opcode. Pushes the code hash of an external contract."""
+        if len(state.stack) < 1:
+            raise IndexError("EXTCODEHASH Error: Stack underflow")
+        address_sv = state.stack.pop()
+        # Requires external lookup or symbolic modeling. Return symbolic for now.
+        logger.warning("EXTCODEHASH opcode returning symbolic value.")
+        if address_sv.is_concrete():
+             addr_val = address_sv.get_concrete_value()
+             var_name = f"extcodehash_0x{addr_val:x}_{instruction.offset}"
+        else:
+             var_name = f"extcodehash_symbolic_{instruction.offset}"
+        result = self.create_symbolic_variable(var_name)
+        state.stack.append(result)
+        return {"next_state": state}
+
 
     # 40s: Block Information
     def _handle_blockhash(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(
-            instruction, state
-        )  # TODO: Implement BLOCKHASH (needs access to historical block hashes)
+        """Handles BLOCKHASH opcode. Pushes the hash of a given block number."""
+        if len(state.stack) < 1:
+            raise IndexError("BLOCKHASH Error: Stack underflow")
+        block_number_sv = state.stack.pop()
+        # Needs access to historical block hashes. Return symbolic for now.
+        logger.warning("BLOCKHASH opcode returning symbolic value.")
+        if block_number_sv.is_concrete():
+             block_num = block_number_sv.get_concrete_value()
+             var_name = f"blockhash_{block_num}_{instruction.offset}"
+        else:
+             var_name = f"blockhash_symbolic_{instruction.offset}"
+        result = self.create_symbolic_variable(var_name)
+        state.stack.append(result)
+        return {"next_state": state}
+
 
     def _handle_coinbase(
         self, instruction: Instruction, state: SymbolicEVMState
@@ -1243,16 +1551,28 @@ class SymbolicExecutor:
     def _handle_chainid(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(
-            instruction, state
-        )  # TODO: Implement CHAINID (needs chain ID from context)
+        """Handles CHAINID opcode. Pushes the current chain ID."""
+        chainid_val = state.registers.get("CHAINID")
+        if chainid_val is None:
+             logger.warning("CHAINID missing from initial state, returning symbolic.")
+             chainid_val = self.create_symbolic_variable(f"chainid_{instruction.offset}")
+             state.registers["CHAINID"] = chainid_val # Store for consistency
+        state.stack.append(chainid_val)
+        logger.debug("CHAINID executed", pc=instruction.offset)
+        return {"next_state": state}
+
 
     def _handle_selfbalance(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(
-            instruction, state
-        )  # TODO: Implement SELFBALANCE
+        """Handles SELFBALANCE opcode. Pushes the balance of the current contract."""
+        # Similar to BALANCE but for state.current_address
+        logger.warning("SELFBALANCE opcode returning symbolic value.")
+        var_name = f"selfbalance_{state.current_address}_{instruction.offset}"
+        result = self.create_symbolic_variable(var_name)
+        state.stack.append(result)
+        return {"next_state": state}
+
 
     def _handle_basefee(
         self, instruction: Instruction, state: SymbolicEVMState
@@ -1683,12 +2003,25 @@ class SymbolicExecutor:
     def _handle_msize(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles MSIZE opcode. Pushes the current size of memory."""
+        # Memory size calculation is complex (multiples of 32 bytes).
+        # Return symbolic for now.
+        logger.warning("MSIZE opcode returning symbolic value.")
+        result = self.create_symbolic_variable(f"msize_{instruction.offset}")
+        state.stack.append(result)
+        return {"next_state": state}
+
 
     def _handle_gas(
         self, instruction: Instruction, state: SymbolicEVMState
     ) -> Dict[str, Any]:
-        return self._handle_unimplemented(instruction, state)
+        """Handles GAS opcode. Pushes the amount of available gas."""
+        # Gas tracking is complex. Return symbolic for now.
+        logger.warning("GAS opcode returning symbolic value.")
+        result = self.create_symbolic_variable(f"gas_{instruction.offset}")
+        state.stack.append(result)
+        return {"next_state": state}
+
 
     def _handle_jumpdest(
         self, instruction: Instruction, state: SymbolicEVMState

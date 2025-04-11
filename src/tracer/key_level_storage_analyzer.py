@@ -154,25 +154,33 @@ class KeyLevelStorageAnalyzer(EnhancedStorageAnalyzer):
         # We need to parse the Z3 expression tree. This is complex.
         # For now, let's use a simplified string parsing approach.
         # A more robust solution would involve traversing the Z3 AST.
-        if "keccak256" in expr_str:
-            # Simplistic: Assume the last argument to keccak is the base slot if concrete
-            # and the other part is the key. This is highly approximate.
-            # TODO: Implement robust Z3 AST parsing for keccak arguments.
-            try:
-                # Look for concrete numbers inside the keccak expression
-                import re
-
-                concrete_slots = [int(x) for x in re.findall(r"\b\d+\b", expr_str)]
-                if concrete_slots:
-                    base_slot = min(
-                        concrete_slots
-                    )  # Guess the smallest concrete number is the base slot
-                    key_repr = expr_str  # Use the whole expression as key for now
-                    return base_slot, key_repr
-            except Exception:
-                pass  # Fallback if parsing fails
-            # Fallback: Use the whole expression as base, no specific key
-            return expr_str, None
+        if z3.is_app_of(expr, z3.DeclareConst): # Check if it's a simple variable first
+             pass # Handled by default case later
+        elif z3.is_app_of(expr, z3.BitVecRef) and expr.decl().name() == "keccak256": # Check if it's keccak
+             # TODO: Implement robust Z3 AST parsing for keccak arguments.
+             # This requires traversing the expr tree to identify the base slot
+             # and the key components based on their structure (e.g., concat).
+             # For now, we call a placeholder and use a heuristic.
+             base_slot_ast, key_repr_ast = self._parse_keccak_args_from_ast(expr)
+             if base_slot_ast is not None:
+                 # If AST parsing gives a base slot (even if symbolic), use it.
+                 # key_repr_ast might be a simplified representation of the key part.
+                 return base_slot_ast, key_repr_ast or expr_str # Fallback key_repr
+             else:
+                 # Fallback heuristic if AST parsing fails
+                 logger.warning("Falling back to heuristic Keccak parsing.")
+                 try:
+                     # Look for concrete numbers inside the keccak expression string
+                     import re
+                     concrete_slots = [int(x) for x in re.findall(r"\b\d+\b", expr_str)]
+                     if concrete_slots:
+                         base_slot = min(concrete_slots) # Guess: smallest concrete is base
+                         key_repr = expr_str # Use the whole expression as key for now
+                         return base_slot, key_repr
+                 except Exception:
+                     pass # Fallback if heuristic fails
+                 # Ultimate fallback: Use the whole expression as base, no specific key
+                 return expr_str, None
 
         # Pattern 2: Array (Addition)
         # Example: base_slot + index
@@ -249,8 +257,36 @@ class KeyLevelStorageAnalyzer(EnhancedStorageAnalyzer):
                 self._analyze_simple_slot(base_slot, slot_accesses)  # Use parent method
 
         # TODO: Re-integrate pattern detection (_detect_known_patterns, _detect_common_patterns)
-        # self._detect_known_patterns()
-        # self._detect_common_patterns()
+        # Re-integrate pattern detection
+        self._detect_known_patterns()
+        self._detect_common_patterns()
+
+    def _parse_keccak_args_from_ast(self, expr: z3.ExprRef) -> Tuple[Optional[Union[int, str]], Optional[str]]:
+        """
+        Placeholder for parsing Keccak256 arguments from Z3 AST.
+
+        This should traverse the Z3 expression tree `expr` representing
+        keccak256(concat(key_parts..., base_slot_bytes)) to extract the
+        base slot (ideally concrete) and a representation of the key parts.
+
+        Args:
+            expr: The Z3 expression representing the keccak256 application.
+
+        Returns:
+            A tuple (base_slot, key_repr) where:
+            - base_slot: Concrete int if found, or string representation of symbolic base.
+            - key_repr: String representation of the key part(s).
+            Returns (None, None) if parsing fails.
+        """
+        logger.warning(f"AST parsing for Keccak expression not fully implemented: {expr}")
+        # Example of basic checks (needs actual traversal)
+        # if expr.num_args() == 1 and expr.arg(0).decl().name() == 'concat':
+        #     concat_args = expr.arg(0).children()
+        #     # Try to find a concrete BitVecVal among the last args as base slot
+        #     # Identify other args as key parts
+        #     pass
+        return None, None # Indicate parsing failure for now
+
 
     def _analyze_key_level_mapping_slot(
         self,
@@ -267,14 +303,36 @@ class KeyLevelStorageAnalyzer(EnhancedStorageAnalyzer):
 
         # Infer value type (can use parent method or enhanced one)
         value_type = self._infer_variable_type(accesses)
-        key_type = "unknown"  # TODO: Improve key type inference
+        key_type = "unknown"
 
-        # Try to infer key type from accesses
+        # Try to infer key type from accesses or key representation
+        inferred_key_types: Set[str] = set()
+        possible_keys: List[str] = []
         for access in accesses:
             if access.key_type:  # From symbolic tracer hints
-                key_type = access.key_type
-                break
-        # TODO: Add more robust key type inference based on key_repr patterns
+                inferred_key_types.add(access.key_type)
+            # Get key_repr for this access
+            details = access_details.get(access.pc) if access.pc is not None else None
+            key_repr = details[1] if details and details[1] is not None else None
+            if key_repr:
+                possible_keys.append(key_repr)
+                # Basic inference based on key_repr format
+                if key_repr.startswith("0x") and len(key_repr) == 42:
+                    inferred_key_types.add("address")
+                elif key_repr.isdigit() or (key_repr.startswith("bv") and key_repr[2:].isdigit()):
+                     # Simple number or Z3 BitVecVal
+                     inferred_key_types.add("uint256") # Default assumption
+                # Add more patterns here (e.g., specific symbolic variable names)
+
+        if len(inferred_key_types) == 1:
+            key_type = inferred_key_types.pop()
+        elif len(inferred_key_types) > 1:
+            logger.warning(f"Conflicting inferred key types for slot {base_slot}: {inferred_key_types}")
+            key_type = "mixed/unknown"
+        else:
+             # If no hints or patterns matched, keep as unknown
+             key_type = "unknown"
+
 
         var = KeyLevelMappingVariable(base_slot, key_type, value_type)
 

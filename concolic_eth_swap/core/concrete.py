@@ -4,37 +4,14 @@ from web3 import Web3
 import json
 import structlog
 
+# Import patterns instead of defining them locally
+from ..swap_detection.patterns import (
+    DEX_ROUTER_ADDRESSES,
+    get_method_info,
+    get_event_info,
+)
+
 logger = structlog.get_logger()
-
-# Known DEX addresses and method IDs (move to patterns.py later)
-# TODO: Move these definitions to swap_detection/patterns.py
-DEX_ADDRESSES = {
-    "mainnet": [
-        "0x7a250d5630b4cf539739df2c5dacb4c659f2488d",  # Uniswap V2 Router
-        "0xe592427a0aece92de3edee1f18e0157c05861564",  # Uniswap V3 Router
-        "0xd9e1ce17f2641f24ae83637ab66a2cca9c378b9f",  # SushiSwap Router
-        # Add other known DEX router addresses
-    ],
-    "goerli": [
-        "0x7a250d5630b4cf539739df2c5dacb4c659f2488d",  # Uniswap V2 Router (same on Goerli)
-        "0xe592427a0aece92de3edee1f18e0157c05861564",  # Uniswap V3 Router (same on Goerli)
-        # Add other testnet DEX routers
-    ],
-}
-
-SWAP_METHOD_IDS = [
-    "0x38ed1739",  # swapExactTokensForTokens
-    "0x7ff36ab5",  # swapExactETHForTokens
-    "0x18cbafe5",  # swapExactTokensForETH
-    "0x414bf389",  # exactInputSingle (V3)
-    "0xc04b8d59",  # exactInput (V3)
-    "0x5f575529",  # swapExactTokensForTokensSupportingFeeOnTransferTokens (V2)
-    "0xfb3bdb41",  # swapETHForExactTokens (V2)
-    "0xb6f9de95",  # swapExactTokensForETHSupportingFeeOnTransferTokens (V2)
-    # Add other known swap method IDs
-]
-
-TOKEN_TRANSFER_METHOD_IDS = ["0xa9059cbb", "0x23b872dd"]  # transfer, transferFrom
 
 
 class ConcreteExecutor:
@@ -135,53 +112,46 @@ class ConcreteExecutor:
         input_data = call.get("input", "0x")
 
         # 1. Check destination address against known DEX routers for the network
-        network_dex_addresses = DEX_ADDRESSES.get(self.network, [])
-        if to_address in network_dex_addresses:
+        network_dex_routers = DEX_ROUTER_ADDRESSES.get(self.network, {})
+        if to_address in network_dex_routers.values():
             logger.debug("POI check: Matched known DEX address", address=to_address)
             return True
 
-        # 2. Check method signature for common swap methods
-        if input_data and len(input_data) >= 10:  # "0x" + 8 chars for method ID
-            method_id = input_data[0:10].lower()
-            if method_id in SWAP_METHOD_IDS:
-                logger.debug(
-                    "POI check: Matched known swap method ID",
-                    method_id=method_id,
-                    address=to_address,
-                )
-                return True
-
-        # 3. Check for token transfer calls (transfer/transferFrom) which are part of swaps
+        # 2. Check method signature for common swap or transfer methods using patterns.py
         if input_data and len(input_data) >= 10:
             method_id = input_data[0:10].lower()
-            if method_id in TOKEN_TRANSFER_METHOD_IDS:
-                # Could refine this: check if 'from' or 'to' in transferFrom is a DEX?
-                logger.debug(
-                    "POI check: Matched token transfer method ID",
-                    method_id=method_id,
-                    address=to_address,
-                )
-                return True  # Consider transfers as potentially relevant
+            method_info = get_method_info(method_id)
+            if method_info:
+                if method_info.swap_type != "TRANSFER":
+                    logger.debug(
+                        "POI check: Matched known swap method ID",
+                        method_id=method_id,
+                        name=method_info.name,
+                        address=to_address,
+                    )
+                    return True
+                else: # It's a transfer method
+                    logger.debug(
+                        "POI check: Matched token transfer method ID",
+                        method_id=method_id,
+                        name=method_info.name,
+                        address=to_address,
+                    )
+                    return True # Consider transfers potentially relevant
 
-        # 4. Check logs within the call frame for Swap events (less common for callTracer, but possible)
-        # This might be redundant if logs are checked separately, but adds robustness.
+        # 3. Check logs within the call frame for Swap events using patterns.py
         for log in call.get("logs", []):
             topics = log.get("topics", [])
             if topics:
                 event_sig_hash = (
                     topics[0].hex() if isinstance(topics[0], bytes) else topics[0]
                 )
-                # TODO: Use event signatures from patterns.py
-                uniswap_v2_swap_event = (
-                    "0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822"
-                )
-                uniswap_v3_swap_event = (
-                    "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"
-                )
-                if event_sig_hash in [uniswap_v2_swap_event, uniswap_v3_swap_event]:
+                event_info = get_event_info(event_sig_hash)
+                if event_info:
                     logger.debug(
-                        "POI check: Found Swap event log within call frame",
+                        "POI check: Found known Swap event log within call frame",
                         event_hash=event_sig_hash,
+                        name=event_info.name,
                         address=to_address,
                     )
                     return True

@@ -11,6 +11,8 @@ from .symbolic import (
     SymbolicType,
 )
 from .concrete import ConcreteExecutor
+# Import patterns for addresses and helpers
+from ..swap_detection.patterns import get_token_address
 import z3  # Needed for Z3 operations in swap checks
 
 logger = structlog.get_logger()
@@ -204,7 +206,10 @@ class ConcolicExecutor:
     #         prev_block = block_num - 1 if block_num is not None and block_num > 0 else 'latest' # Approximation
     #
     #         eth_balance = self.concrete_executor.get_eth_balance(sender, prev_block)
-    #         usdc_address = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" # TODO: Get from config
+    #         usdc_address = get_token_address("USDC", self.network)
+    #         if not usdc_address:
+    #              logger.warning("USDC address not found for network in patterns", network=self.network)
+    #              usdc_address = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" # Fallback
     #         # usdc_balance = self.concrete_executor.get_token_balance(usdc_address, sender, prev_block) # Needs ABI
     #         usdc_balance = 0 # Placeholder
     #
@@ -245,8 +250,11 @@ class ConcolicExecutor:
     ) -> Optional[Dict]:
         """Check if token balance changes in a given state follow a swap pattern"""
         logger.debug("Checking swap balance pattern", sender=sender)
-        eth_addr = "ETH"
-        usdc_addr = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"  # TODO: Get from config/patterns
+        eth_addr = "ETH" # Assuming ETH is represented this way
+        usdc_addr = get_token_address("USDC", self.network)
+        if not usdc_addr:
+            logger.error("USDC address not found for network in patterns", network=self.network)
+            return {"is_swap": False, "error": "USDC address configuration missing"}
 
         # Get symbolic values for initial and final balances from the state's perspective
         # Note: 'initial' here means the symbolic variable created at the start of execution

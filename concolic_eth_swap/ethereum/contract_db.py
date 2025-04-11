@@ -4,20 +4,33 @@ import structlog
 import json
 import os
 
+# Placeholder for an external ABI source client (e.g., Etherscan)
+# from ..utils.etherscan_client import EtherscanClient # Assuming this exists
+
 logger = structlog.get_logger()
 
 
 class ContractDB:
     """
-    A simple database for storing and retrieving contract information,
-    like ABIs or known interface types.
-    """
+     A simple database for storing and retrieving contract information,
+     like ABIs or known interface types. Optionally fetches from external sources.
+     """
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, etherscan_api_key: Optional[str] = None):
         self.db_path = db_path
         self.contracts: Dict[
             str, Dict[str, Any]
         ] = {}  # address -> {abi: ..., name: ...}
+        self.etherscan_client = None
+        # if etherscan_api_key:
+        #     try:
+        #         # self.etherscan_client = EtherscanClient(api_key=etherscan_api_key)
+        #         logger.info("Etherscan client initialized (placeholder).")
+        #     except Exception as e:
+        #         logger.error("Failed to initialize Etherscan client (placeholder)", error=str(e))
+        # else:
+        #     logger.info("Etherscan API key not provided, external fetching disabled.")
+
         if db_path and os.path.exists(db_path):
             self._load_db()
 
@@ -99,9 +112,26 @@ class ContractDB:
         if abi:
             logger.debug("Found ABI in DB", address=address_lower)
         else:
-            logger.debug("ABI not found in DB", address=address_lower)
+            logger.debug("ABI not found in DB, checking external sources...", address=address_lower)
             # TODO: Optionally try fetching from Etherscan or other sources here?
-        return abi
+            if self.etherscan_client:
+                try:
+                    # fetched_abi = self.etherscan_client.get_abi(address_lower)
+                    fetched_abi = None # Placeholder call
+                    if fetched_abi:
+                        logger.info("Fetched ABI from external source", address=address_lower)
+                        # Optionally add to local DB for caching
+                        self.add_contract(address_lower, abi=fetched_abi, overwrite=False)
+                        self._save_db() # Save cache
+                        return fetched_abi
+                    else:
+                        logger.debug("ABI not found via external source", address=address_lower)
+                except Exception as e:
+                    logger.error("Error fetching ABI from external source", address=address_lower, error=str(e))
+            else:
+                logger.debug("External ABI fetching disabled or client not available.")
+
+        return abi # Return None if not found locally or externally
 
     def get_contract_name(self, address: str) -> Optional[str]:
         """Retrieves the name for a given contract address."""

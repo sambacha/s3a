@@ -247,7 +247,7 @@ class SwapAnalyzer:
             if to_address in known_routers:
                 # Try to decode path to see if it involves ETH/USDC
                 try:
-                    # TODO: Implement robust path extraction using ABI
+                    # Path extraction is handled by _extract_swap_path
                     path = self._extract_swap_path(tx, method_info)
                     if path and is_eth_usdc_path(path, self.network):
                         return {
@@ -307,7 +307,36 @@ class SwapAnalyzer:
             if event_info and event_info.name == "Swap":
                 # Found a Swap event, check if it's from a known ETH/USDC pool
                 if is_known_eth_usdc_pool(log_address, self.network):
-                    # TODO: Decode log data to get amounts for more details
+                    # Decode log data to get amounts
+                    log_details = {"pool_address": log_address}
+                    try:
+                        data_bytes = to_bytes(hexstr=log.get("data", "0x"))
+                        if event_info.dex_type == "UNISWAP_V2":
+                            # V2 Swap: (uint amount0In, uint amount1In, uint amount0Out, uint amount1Out)
+                            decoded_data = abi_decode(
+                                ["uint256"] * 4, data_bytes
+                            )
+                            log_details.update({
+                                "amount0In": str(decoded_data[0]),
+                                "amount1In": str(decoded_data[1]),
+                                "amount0Out": str(decoded_data[2]),
+                                "amount1Out": str(decoded_data[3]),
+                            })
+                        elif event_info.dex_type == "UNISWAP_V3":
+                            # V3 Swap: (int amount0, int amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)
+                            # Note: amount0/amount1 are signed integers representing change
+                            decoded_data = abi_decode(
+                                ["int256", "int256", "uint160", "uint128", "int24"], data_bytes
+                            )
+                            log_details.update({
+                                "amount0Change": str(decoded_data[0]),
+                                "amount1Change": str(decoded_data[1]),
+                                # Optionally add sqrtPriceX96, liquidity, tick if needed
+                            })
+                        logger.debug("Decoded Swap event data", details=log_details)
+                    except Exception as decode_err:
+                        logger.warning("Failed to decode Swap event data", log_index=log.get("logIndex"), error=decode_err)
+
                     return {
                         "is_swap": True,
                         "method": f"Swap Event from known ETH/USDC Pool ({event_info.dex_type})",

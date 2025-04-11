@@ -158,3 +158,42 @@ def test_symbolic_executor_init():
 # TODO: Add tests for execute_symbolic with simple bytecode examples
 # These would require implementing basic opcode handlers (STOP, PUSH, ADD, JUMPI)
 # and mocking transaction/block context.
+
+def test_execute_symbolic_simple_add():
+    executor = SymbolicExecutor()
+    # Bytecode: PUSH1 0x05, PUSH1 0x0a, ADD, STOP
+    bytecode = bytes.fromhex("6005600a0100")
+    contract_address = "0x1111111111111111111111111111111111111111"
+    sender_address = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    # Mock transaction and block context
+    mock_tx = {
+        "from": sender_address,
+        "to": contract_address,
+        "gas": 200000,
+        "value": 0,
+        "input": "0x",
+    }
+    mock_block = {"number": 1, "timestamp": 1678886400, "difficulty": 0}
+
+    # Execute symbolically
+    paths = executor.execute_symbolic(
+        mock_tx, mock_block, bytecode, contract_address, max_paths=1, max_depth=10
+    )
+
+    # Assertions
+    assert len(paths) == 1, "Should find exactly one execution path"
+    final_state, reason = paths[0]
+
+    assert reason == "STOP", "Path should terminate with STOP"
+    assert isinstance(
+        final_state, SymbolicEVMState
+    ), "Final state should be SymbolicEVMState"
+    assert len(final_state.stack) == 1, "Final stack should have one item"
+
+    result_val = final_state.stack[0]
+    assert isinstance(result_val, SymbolicValue), "Stack item should be SymbolicValue"
+    assert result_val.is_concrete(), "Result should be concrete"
+    assert (
+        result_val.get_concrete_value() == 15
+    ), "Result of 5 + 10 should be 15"

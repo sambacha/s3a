@@ -1,29 +1,21 @@
-from .disassembler import identify_basic_blocks, instr_map_raw # Assuming instr_map_raw is accessible or passed back
-from .analysis.stack_analyzer import analyze_stack_locally
-from .analysis.jump_classifier import classify_jumps
-from .analysis.context_builder import create_context
-from .analysis.function_boundary import infer_function_boundaries
-from .analysis.argument_inference import infer_function_arguments
-from .analysis.symbolic_executor import SymbolicExecutor, ExecutionState # Import symbolic execution components
+from decompiler.disassembler import identify_basic_blocks, instr_map_raw # Assuming instr_map_raw is accessible or passed back
+from decompiler.analysis.stack_analyzer import analyze_stack_locally
+from decompiler.analysis.jump_classifier import classify_jumps
+from decompiler.analysis.context_builder import create_context
+from decompiler.analysis.function_boundary import infer_function_boundaries
+# Removed duplicate relative imports that followed
+from decompiler.analysis.argument_inference import infer_function_arguments
+from decompiler.analysis.symbolic_executor import SymbolicExecutor, ExecutionState # Import symbolic execution components
 import sys # For debug printing
 
 class SmartContractDecompiler:
     def __init__(self, bytecode):
         self.bytecode = bytecode
-        # Pass instr_map_raw back or make it accessible if needed by executor
-        self.basic_blocks = identify_basic_blocks(bytecode)
-        # Need instr_map_raw for SymbolicExecutor
-        # TODO: Refactor identify_basic_blocks to return instr_map_raw or make it global/class member?
-        # For now, assume instr_map_raw is available globally or passed differently.
-        # Let's re-run disassembly partially to get it for now (inefficient)
-        try:
-            temp_raw_instr = list(disassemble_all(bytecode))
-            temp_instr_map_raw = {instr.pc: instr for instr in temp_raw_instr if isinstance(instr, PyevmInstruction)}
-        except:
-            temp_instr_map_raw = {}
-
+        # Get both blocks and the instruction map from the updated function
+        self.basic_blocks, self.instr_map_raw = identify_basic_blocks(bytecode)
 
         print(f"[Decompiler Init] Basic blocks identified: {len(self.basic_blocks)}", file=sys.stderr)
+        print(f"[Decompiler Init] Raw instruction map size: {len(self.instr_map_raw)}", file=sys.stderr)
 
         for block in self.basic_blocks.values():
             analyze_stack_locally(block)
@@ -39,8 +31,8 @@ class SmartContractDecompiler:
 
         # --- Step 3: Analyze Jumps Symbolically ---
         jump_analysis_results = {}
-        if self.basic_blocks and temp_instr_map_raw: # Check if blocks and map exist
-             symbolic_executor = SymbolicExecutor(self.basic_blocks, temp_instr_map_raw)
+        if self.basic_blocks and self.instr_map_raw: # Use the map returned by identify_basic_blocks
+             symbolic_executor = SymbolicExecutor(self.basic_blocks, self.instr_map_raw) # Pass the map here
              print("[Decompiler Init] Analyzing jumps...", file=sys.stderr)
              for jump_offset, jump_instr in self.jumps.items():
                  # Find the block containing the jump
@@ -55,10 +47,27 @@ class SmartContractDecompiler:
                            break
 
                  if containing_block:
-                     # Define a default initial state for the block entry
-                     # TODO: This needs proper state propagation from predecessors
-                     initial_state = ExecutionState(pc=containing_block.start_offset, stack=[])
-                     print(f"[Decompiler Init] Analyzing jump at {hex(jump_offset)} in block {containing_block.start_offset}", file=sys.stderr)
+                     # --- Estimate initial state (Placeholder for proper dataflow analysis) ---
+                     # Try to estimate required stack depth based on local analysis
+                     # min_stack_level is negative if block requires items (e.g., -2 means needs 2 items)
+                     required_stack_depth = getattr(containing_block, 'min_stack_level', 0)
+                     if required_stack_depth < 0:
+                         required_stack_depth = abs(required_stack_depth)
+                     else: # Block doesn't pop more than it pushes initially, 0 depth might be ok
+                         required_stack_depth = 0
+
+                     # Create a symbolic stack (approximation)
+                     # TODO: This is an approximation. Proper dataflow analysis is needed
+                     #       to determine the actual stack contents entering the block by merging
+                     #       states from all predecessors.
+                     initial_stack = [
+                         symbolic_executor.create_symbolic_variable(f"stack_in_{containing_block.start_offset}_{i}")
+                         for i in range(required_stack_depth)
+                     ]
+                     initial_state = ExecutionState(pc=containing_block.start_offset, stack=initial_stack)
+                     # --- End Placeholder ---
+
+                     print(f"[Decompiler Init] Analyzing jump at {hex(jump_offset)} in block {containing_block.start_offset} (Initial stack depth approx: {len(initial_stack)})", file=sys.stderr)
 
                      try:
                          concrete_target, symbolic_target_expr = symbolic_executor.analyze_jump(jump_instr, initial_state)
@@ -128,9 +137,57 @@ class SmartContractDecompiler:
                  print(f"[Decompiler Init] Function {hex(func_offset)}: Args={function.args}, Returns={function.returns}", file=sys.stderr)
 
 
-        # --- Step 7: Context Sensitivity (Placeholder) ---
-        # print("[Decompiler Init] Building contexts (placeholder)...", file=sys.stderr)
-        # for instr_offset in offset_to_instruction:
-        #     instr = offset_to_instruction[instr_offset]
-        #     # This needs proper CFG traversal and state management
-        #     # self.contexts[instr.offset] = create_context(instr, {}, self.jump_classifications) # Use offset
+        # --- Step 7: Context Sensitivity ---
+        print("[Decompiler Init] Building contexts...", file=sys.stderr)
+        # Traverse the CFG to build contexts
+        self.contexts = {}
+        
+        # Start with entry points (function starts)
+        worklist = []
+        visited = set()
+        
+        # Add function entry points to worklist
+        for func_offset, function in self.functions.items():
+            if function and function.entry_block:
+                entry_offset = function.entry_block.start_offset
+                worklist.append((entry_offset, {}))  # (block_offset, context)
+        
+        # Add main entry point (offset 0)
+        if 0 in self.basic_blocks:
+            worklist.append((0, {}))
+            
+        # Process the worklist
+        while worklist:
+            block_offset, current_context = worklist.pop()
+            
+            if block_offset in visited:
+                continue
+                
+            visited.add(block_offset)
+            block = self.basic_blocks.get(block_offset)
+            
+            if not block:
+                continue
+                
+            # Process each instruction in the block
+            for instr in block.instructions:
+                # Create context for this instruction
+                new_context = create_context(instr, current_context, self.jump_classifications)
+                self.contexts[instr.offset] = new_context
+                current_context = new_context
+                
+            # Add successors to worklist
+            for succ in block.successors:
+                if succ.start_offset not in visited:
+                    # Check if this is a function call (don't follow call edges for context building)
+                    is_call_edge = False
+                    last_instr = block.instructions[-1] if block.instructions else None
+                    
+                    if last_instr and last_instr.offset in self.jump_classifications:
+                        if self.jump_classifications[last_instr.offset] == "private-call":
+                            is_call_edge = True
+                    
+                    if not is_call_edge:
+                        worklist.append((succ.start_offset, current_context))
+                        
+        print(f"[Decompiler Init] Built contexts for {len(self.contexts)} instructions", file=sys.stderr)
